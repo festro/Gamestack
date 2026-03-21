@@ -25,6 +25,7 @@ services:
   wolf:
     image: ghcr.io/games-on-whales/wolf:stable
     container_name: wolf
+    network_mode: host
     environment:
       - XDG_RUNTIME_DIR=/tmp/sockets
       - GOW_RUNTIME_DIR=/tmp/sockets
@@ -33,16 +34,9 @@ services:
       - ${DATA_DIR}/wolf-config:/etc/wolf:rw
       - /tmp/sockets:/tmp/sockets:rw
       - /var/run/docker.sock:/var/run/docker.sock:rw
+      - /var/run/wolf:/var/run/wolf:rw
       - /dev/:/dev/:rw
       - /run/udev/data:/run/udev/data:rw
-    ports:
-      - "47984:47984/tcp"
-      - "47989:47989/tcp"
-      - "48010:48010/tcp"
-      - "47998:47998/udp"
-      - "47999:47999/udp"
-      - "48000:48000/udp"
-      - "48002:48002/udp"
     devices:
       - /dev/dri:/dev/dri
       - /dev/uinput:/dev/uinput
