@@ -1,0 +1,53 @@
+services:
+
+  amp:
+    image: mitchtalmadge/amp-dockerized:latest
+    container_name: amp
+    mac_address: ${AMP_MAC}
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - USERNAME=${AMP_USERNAME}
+      - PASSWORD=${AMP_PASSWORD}
+      - LICENCE=${AMP_LICENCE}
+      - MODULE=ADS
+    volumes:
+      - ${DATA_DIR}/ampdata:/home/amp/.ampdata
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8080:8080"
+      - "${VRISING_GAME_PORT}:${VRISING_GAME_PORT}/udp"
+      - "${VRISING_QUERY_PORT}:${VRISING_QUERY_PORT}/udp"
+      - "25575:25575/tcp"
+    restart: unless-stopped
+
+  wolf:
+    image: ghcr.io/games-on-whales/wolf:stable
+    container_name: wolf
+    environment:
+      - XDG_RUNTIME_DIR=/tmp/sockets
+      - GOW_RUNTIME_DIR=/tmp/sockets
+      - HOST_APPS_STATE_FOLDER=/etc/wolf
+    volumes:
+      - ${DATA_DIR}/wolf-config:/etc/wolf:rw
+      - /tmp/sockets:/tmp/sockets:rw
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - /dev/:/dev/:rw
+      - /run/udev/data:/run/udev/data:rw
+    ports:
+      - "47984:47984/tcp"
+      - "47989:47989/tcp"
+      - "48010:48010/tcp"
+      - "47998:47998/udp"
+      - "47999:47999/udp"
+      - "48000:48000/udp"
+      - "48002:48002/udp"
+    devices:
+      - /dev/dri:/dev/dri
+      - /dev/uinput:/dev/uinput
+    restart: unless-stopped
+
+networks:
+  default:
+    driver: bridge

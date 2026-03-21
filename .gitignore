@@ -1,0 +1,7 @@
+.env
+images/
+ampdata/
+wolf-config/
+*.tmp
+*.log
+*~
