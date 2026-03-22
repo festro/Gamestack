@@ -50,16 +50,32 @@ echo ""
 echo "Open Moonlight on your Chromebook and add 192.168.8.115 as a host"
 echo ""
 
-# Offer to cache images for portability
-read -p "Cache images locally for portable use? (y/n): " cache
-if [ "$cache" = "y" ]; then
-  echo ""
-  echo "=== Caching images to images/ folder ==="
-  mkdir -p images
-  echo "[+] Saving AMP image..."
-  docker save mitchtalmadge/amp-dockerized:latest | gzip > images/amp-image.tar.gz
-  echo "[+] Saving Wolf image..."
-  docker save ghcr.io/games-on-whales/wolf:stable | gzip > images/wolf-image.tar.gz
-  echo "[+] Done. Images cached in gamestack/images/"
-  echo "    Total size: $(du -sh images/ | cut -f1)"
-fi
+# Auto-cache images if they've changed or cache doesn't exist
+echo ""
+echo "=== Checking image cache ==="
+
+cache_image() {
+  local image=$1
+  local file=$2
+  local label=$3
+
+  current_digest=$(docker inspect --format='{{index .RepoDigests 0}}' "$image" 2>/dev/null || echo "unknown")
+  digest_file="images/${file%.tar.gz}.digest"
+
+  if [ ! -f "images/$file" ] || [ ! -f "$digest_file" ] || [ "$current_digest" != "$(cat $digest_file)" ]; then
+    echo "[+] $label image changed or not cached — saving..."
+    mkdir -p images
+    docker save "$image" | gzip > "images/$file"
+    echo "$current_digest" > "$digest_file"
+    echo "[+] $label cached."
+  else
+    echo "[=] $label cache is up to date, skipping."
+  fi
+}
+
+cache_image "mitchtalmadge/amp-dockerized:latest" "amp-image.tar.gz" "AMP"
+cache_image "ghcr.io/games-on-whales/wolf:stable" "wolf-image.tar.gz" "Wolf"
+
+echo ""
+echo "=== Cache check complete ==="
+echo "Total cache size: $(du -sh images/ 2>/dev/null | cut -f1)"

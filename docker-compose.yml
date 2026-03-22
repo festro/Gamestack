@@ -1,5 +1,4 @@
 services:
-
   amp:
     image: mitchtalmadge/amp-dockerized:latest
     container_name: amp
@@ -30,6 +29,7 @@ services:
       - XDG_RUNTIME_DIR=/tmp/sockets
       - GOW_RUNTIME_DIR=/tmp/sockets
       - HOST_APPS_STATE_FOLDER=/etc/wolf
+      - PULSE_SERVER=unix:/tmp/sockets/pulse-socket
     volumes:
       - ${DATA_DIR}/wolf-config:/etc/wolf:rw
       - /tmp/sockets:/tmp/sockets:rw
