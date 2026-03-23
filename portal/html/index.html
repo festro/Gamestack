@@ -741,7 +741,7 @@ main {
           <div class="service-status-dot up" id="svc-amp-dot"></div>
           <div class="service-name">AMP</div>
           <div class="service-desc">Game server management panel</div>
-          <div class="service-addr"><a href="#" onclick="return false" target="_blank">YOUR_HOST_IP:8080</a></div>
+          <div class="service-addr"><a href="#" target="_blank" onclick="this.href='http://'+window.location.hostname+':8080';return true;">YOUR_HOST_IP:8080</a></div>
           <div class="service-actions">
             <a class="btn-sm primary" onclick="navigate('amp', 'AMP › Game Servers')">Open</a>
           </div>
@@ -751,7 +751,7 @@ main {
           <div class="service-status-dot up" id="svc-wolf-dot"></div>
           <div class="service-name">Wolf</div>
           <div class="service-desc">Moonlight streaming host</div>
-          <div class="service-addr">YOUR_HOST_IP:47989</div>
+          <div class="service-addr"><a href="#" target="_blank" onclick="this.href='http://'+window.location.hostname+':47989';return true;">YOUR_HOST_IP:47989</a></div>
           <div class="service-actions">
             <a class="btn-sm" onclick="navigate('stream', 'Wolf › Stream')">Stream</a>
           </div>
@@ -771,7 +771,7 @@ main {
           <div class="service-status-dot unknown" id="svc-sidecar-dot"></div>
           <div class="service-name">WebRTC Sidecar</div>
           <div class="service-desc">Browser streaming for Wolf sessions</div>
-          <div class="service-addr">YOUR_HOST_IP:8088</div>
+          <div class="service-addr"><a href="#" target="_blank" onclick="this.href='http://'+window.location.hostname+':8088';return true;">YOUR_HOST_IP:8088</a></div>
           <div class="service-actions">
             <a class="btn-sm" onclick="navigate('stream', 'Wolf › Stream')">Launch</a>
           </div>
@@ -809,7 +809,7 @@ main {
         <span class="toolbar-label">AMP Panel</span>
         <span class="toolbar-url">YOUR_HOST_IP:8080</span>
         <div style="margin-left:auto;display:flex;gap:8px">
-          <a class="btn-sm" href="#" onclick="return false" target="_blank">Open in new tab ↗</a>
+          <a class="btn-sm" href="#" target="_blank" onclick="this.href='http://'+window.location.hostname+':8080';return true;">Open in new tab ↗</a>
         </div>
       </div>
       <iframe class="amp-iframe" id="amp-iframe" src="about:blank" allowfullscreen></iframe>

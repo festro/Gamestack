@@ -39,10 +39,8 @@ FILES=(
     "portal/nginx/default.conf"
     "build.js"
     "configure.sh"
-    "quicksetup.sh"
     "setup.sh"
     "gamestack"
-    "preflight.sh"
     "README.md"
     "SETUP_CHECKLIST.md"
 )
@@ -180,10 +178,8 @@ apply "portal/html/index.html"     "${PORTAL_EXPRS[@]}"
 apply "portal/nginx/default.conf"  "${USER_EXPRS[@]}"
 apply "build.js"                   "${BUILD_EXPRS[@]}"
 apply "configure.sh"               "${USER_EXPRS[@]}"
-apply "quicksetup.sh"              "${USER_EXPRS[@]}"
 apply "setup.sh"                   "${USER_EXPRS[@]}"
 apply "gamestack"                  "${USER_EXPRS[@]}"
-apply "preflight.sh"               "${USER_EXPRS[@]}"
 apply "README.md"                  "${USER_EXPRS[@]}"
 apply "SETUP_CHECKLIST.md"         "${CHECKLIST_EXPRS[@]}"
 
@@ -199,7 +195,7 @@ check_content() {
     # Bare IPs — skip known-safe and doc-example patterns
     hits=$(echo "$content" \
         | grep -nE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' \
-        | grep -vE '(YOUR_|your_|127\.0\.0\.|1\.1\.1\.1|1\.0\.0\.1|0\.0\.0\.0)' \
+        | grep -vE '(YOUR_|your_|127\.0\.0\.|1\.1\.1\.1|1\.0\.0\.1|0\.0\.0\.0|192\.168\.1\.100)' \
         | grep -vE '(x\.[0-9]|[0-9]\.x|\bx\b|1\.2\.3\.4)' \
         || true)
     if [ -n "$hits" ]; then

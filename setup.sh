@@ -19,26 +19,33 @@ fi
 set -a; source .env; set +a
 
 # ── Preflight ─────────────────────────────────────────────────────────────────
-# Run on first setup or if preflight results are missing/stale
+# Preflight is run by configure.sh — if .preflight_env exists we can skip.
+# If missing, run configure.sh --preflight-only to generate it.
 if [ ! -f .preflight_env ] || [ .env -nt .preflight_env ]; then
     echo ""
     echo "=== Running preflight check ==="
-    if [ "$1" = "--auto" ]; then
-        bash preflight.sh --auto || {
-            echo ""
-            echo "[!] Preflight reported errors — fix them before continuing."
-            exit 1
-        }
+    if [ -f configure.sh ]; then
+        if [ "$1" = "--auto" ]; then
+            bash configure.sh --preflight-only --auto || {
+                echo ""
+                echo "[!] Preflight reported errors — fix them before continuing."
+                exit 1
+            }
+        else
+            bash configure.sh --preflight-only || {
+                echo ""
+                echo "[!] Preflight reported errors — fix them before continuing."
+                exit 1
+            }
+        fi
     else
-        bash preflight.sh || {
-            echo ""
-            echo "[!] Preflight reported errors — fix them before continuing."
-            exit 1
-        }
+        echo "[!] configure.sh not found — cannot run preflight."
+        echo "    Run 'bash configure.sh' first to set up your environment."
+        exit 1
     fi
     echo ""
 else
-    echo "[=] Preflight already run — skipping (run 'bash preflight.sh' to re-check)"
+    echo "[=] Preflight already run — skipping (run 'bash configure.sh --preflight-only' to re-check)"
 fi
 
 # Load preflight results for GPU-specific behaviour later
