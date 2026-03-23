@@ -23,8 +23,8 @@ if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR);
 const META = {
   title:    'GameStack',
   subtitle: 'Infrastructure & Operations Documentation',
-  version:  'v1.2',
-  date:     'Mar 22 2026',
+  version:  'v1.4',
+  date:     'Mar 23 2026',
   owner:    'your-username / YourNetwork',
 };
 
@@ -120,7 +120,7 @@ const SECTIONS = [
       { type: 'p', text: 'A self-contained portable gaming LAN stack running on the GameStack Host, streamable to the Streaming client via Moonlight/Wolf.' },
       { type: 'table2', rows: [
         ['GitHub',      'https://github.com/festro/Gamestack'],
-        ['Version',     'v1.2'],
+        ['Version',     'v1.4'],
         ['Path',        '/home/your-username/gamestack/'],
         ['Wolf Config', '/home/your-username/gamestack/wolf-config/'],
         ['AMP Web UI',  'http://YOUR_HOST_IP:8080'],
@@ -131,6 +131,8 @@ const SECTIONS = [
         ['amp',           'mitchtalmadge/amp-dockerized:latest',          'Game server management panel'],
         ['wolf',          'ghcr.io/games-on-whales/wolf:stable',          'Moonlight streaming host'],
         ['WolfPulseAudio','ghcr.io/games-on-whales/pulseaudio:master',    'Audio server for Wolf'],
+        ['wolf-webrtc',   'local build (wolf-webrtc-sidecar/)',            'WebRTC browser streaming sidecar'],
+        ['portal',        'nginx:alpine',                                  'GameStack portal UI — dashboard, AMP, docs'],
       ]},
       { type: 'h2', text: 'Access Points' },
       { type: 'table3', headers: ['Service', 'Address', 'Notes'], rows: [
@@ -163,6 +165,18 @@ const SECTIONS = [
         { status: 'done', text: 'Stream connects — HEVC decode, VAAPI, audio init all confirmed' },
         { status: 'warn', text: 'Wolf UI container not launching — Wolf returns empty response to launch requests. Binary backtrace dump in wolf-config/cfg/' },
         { status: 'warn', text: 'Audio pulsesrc error reading data -1 — GStreamer audio pipeline dying post-connect' },
+      ]},
+      { type: 'h2', text: 'GameStack Tooling (Mar 23 2026)' },
+      { type: 'bullets', items: [
+        { status: 'done', text: 'build.js orphaned ] syntax error fixed — node build.js runs clean' },
+        { status: 'done', text: 'configure.sh confirm() newline bug fixed — run_apply now executes correctly after wizard' },
+        { status: 'done', text: 'ampinstmgr resetlogin replaced with container restart instruction — command broken without TTY' },
+        { status: 'done', text: 'amp_activate_licence() added to configure.sh — AMP API login, ActivateAMPLicence, SetConfigs for new instance key, fully hands-free' },
+        { status: 'done', text: 'sterilize.sh — commit message updated to v1.4, set -e fragility fixed, .env/ampdata purge section added' },
+        { status: 'done', text: 'docker-compose.yml — duplicate /dev/dri volumes entry removed from wolf-webrtc' },
+        { status: 'done', text: 'sidecar.py — codec probe added, detects H264 vs HEVC, refuses with actionable error if HEVC detected' },
+        { status: 'done', text: '.env symlink removed — each directory (Gamestack/ and Gamestack_Live/) has independent .env' },
+        { status: 'done', text: 'v1.4 committed and pushed to github.com/festro/Gamestack' },
       ]},
       { type: 'h2', text: 'Network' },
       { type: 'bullets', items: [
@@ -205,6 +219,9 @@ const SECTIONS = [
         { text: "Your Router is DMZ'd on Asus router — Asus forwards all unsolicited inbound to YOUR_UPSTREAM_ROUTER_IP" },
         { text: 'Spectrum public IP is dynamic (currently YOUR_PUBLIC_IP) — DDNS setup required for reliability' },
         { text: 'Any proxied service: keep proxied via Cloudflare — use .well-known delegation when federation needed' },
+        { text: 'wolf-webrtc sidecar codec probe: detects H264 vs HEVC before building GStreamer pipeline — Wolf must be set to H264 for WebRTC path' },
+        { text: '.env is independent in Gamestack/ and Gamestack_Live/ — no symlink, each dir manages its own config' },
+        { text: 'Key paths: live=~/Git/Gamestack_Live/, git=~/Git/Gamestack/, data=/home/festro33/Gamestack/' },
       ]},
     ],
   },
@@ -212,13 +229,14 @@ const SECTIONS = [
     title: 'Next Session Priorities',
     content: [
       { type: 'bullets', items: [
-        { status: 'open', text: 'Fix Wolf UI launch — Wolf returns empty response, investigate backtrace dump, consider testing newer Wolf build' },
-        { status: 'open', text: 'Fix Wolf audio — pulsesrc error reading data -1' },
-        { status: 'open', text: 'DDNS setup — Cloudflare A record auto-update when Spectrum IP changes' },
-        { status: 'open', text: 'Router 2 router transition when GameStack Host goes wired' },
+        { status: 'open', text: 'Wolf UI — read backtrace dump in wolf-config/cfg/, consider testing ghcr.io/games-on-whales/wolf:master' },
+        { status: 'open', text: 'Wolf audio — pulsesrc error reading data -1, investigate PulseAudio socket timing/permissions between wolf and WolfPulseAudio containers' },
+        { status: 'open', text: 'DDNS — set up ddclient or Cloudflare API script for play.layonet.org dynamic IP rotation' },
+        { status: 'open', text: 'Portal end-to-end test — verify AMP iframe and link fixes against live stack after fresh configure run' },
+        { status: 'open', text: 'Router 2 transition — when K8 Plus goes wired: swap router, recreate port forwards, update DNS connection name' },
         { status: 'open', text: 'Streaming client CNVi Wi-Fi swap — Your Wi-Fi adapter' },
-        { status: 'open', text: 'Add Steam to Wolf (config.toml entry already exists)' },
-        { status: 'open', text: 'Push v1.3 commit after Wolf UI working' },
+        { status: 'open', text: 'Steam in Wolf — config.toml entry exists, activate and test session launch' },
+        { status: 'open', text: 'Push v1.5 commit after Wolf UI/audio resolved' },
       ]},
     ],
   },
