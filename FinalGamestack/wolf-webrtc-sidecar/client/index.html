@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wolf Stream</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #0a0c10;
+    --surface: #111520;
+    --border:  #1e2535;
+    --accent:  #4a9eff;
+    --text:    #c9d1e8;
+    --muted:   #5a6480;
+    --green:   #3ddc97;
+    --red:     #ff5f5f;
+    --mono:    'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    overflow: hidden;
+  }
+
+  /* ── Stream view (active) ── */
+  #stream-view {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: #000;
+  }
+
+  #stream-video {
+    width: 100%; height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  #stream-overlay {
+    position: absolute;
+    top: 12px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,12,16,0.85);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 11px;
+    color: var(--muted);
+    pointer-events: none;
+    transition: opacity 0.4s;
+    white-space: nowrap;
+  }
+
+  #stream-overlay.hidden { opacity: 0; }
+
+  /* ── Connect UI ── */
+  #connect-view {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    padding: 24px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 32px 36px;
+    width: 100%;
+    max-width: 440px;
+  }
+
+  .logo {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    margin-bottom: 4px;
+  }
+
+  .tagline {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 28px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  label {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+  }
+
+  input[type=text] {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 9px 12px;
+    outline: none;
+    transition: border-color 0.15s;
+    margin-bottom: 16px;
+  }
+
+  input[type=text]:focus { border-color: var(--accent); }
+
+  .btn {
+    display: block;
+    width: 100%;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.88; }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+
+  .status {
+    margin-top: 14px;
+    font-size: 12px;
+    min-height: 18px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .dot.idle    { background: var(--muted); }
+  .dot.busy    { background: var(--accent); animation: pulse 1s infinite; }
+  .dot.ok      { background: var(--green); }
+  .dot.error   { background: var(--red); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
+  }
+
+  .sessions-list {
+    margin-top: 20px;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+  }
+
+  .sessions-label {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+
+  .session-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .session-item:hover {
+    border-color: var(--accent);
+    background: rgba(74,158,255,0.05);
+  }
+
+  .session-id {
+    font-size: 11px;
+    color: var(--text);
+    font-family: var(--mono);
+  }
+
+  .session-connect {
+    font-size: 10px;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .no-sessions {
+    font-size: 11px;
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  /* ── Stats HUD ── */
+  #stats-hud {
+    position: fixed;
+    bottom: 12px;
+    right: 12px;
+    background: rgba(10,12,16,0.8);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 7px 10px;
+    font-size: 10px;
+    color: var(--muted);
+    display: none;
+    line-height: 1.6;
+    pointer-events: none;
+  }
+
+  #stats-hud.visible { display: block; }
+</style>
+</head>
+<body>
+
+<!-- Connect UI -->
+<div id="connect-view">
+  <div class="card">
+    <div class="logo">Wolf Stream</div>
+    <div class="tagline">WebRTC Browser Client</div>
+
+    <label for="host-input">Sidecar Host</label>
+    <input type="text" id="host-input" placeholder="your-host-ip" />
+
+    <label for="session-input">Session ID</label>
+    <input type="text" id="session-input" placeholder="6323913000772626619" />
+
+    <button class="btn" id="connect-btn" onclick="connect()">Connect</button>
+
+    <div class="status">
+      <div class="dot idle" id="status-dot"></div>
+      <span id="status-text">Ready</span>
+    </div>
+
+    <div class="sessions-list" id="sessions-list" style="display:none">
+      <div class="sessions-label">Active Sessions</div>
+      <div id="sessions-container"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Stream View -->
+<div id="stream-view">
+  <video id="stream-video" autoplay playsinline muted></video>
+  <div id="stream-overlay">Press <b>Esc</b> to disconnect · <b>F2</b> toggle stats · Click to capture input</div>
+  <div id="stats-hud" title="WebRTC stats"></div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let ws = null;
+let pc = null;
+let statsTimer = null;
+let overlayTimer = null;
+let inputCaptured = false;
+let statsVisible = false;
+
+const $ = id => document.getElementById(id);
+
+// ── Auto-detect host from current page location ───────────────────────────────
+window.addEventListener('load', () => {
+  const hostInput = $('host-input');
+  if (location.hostname && location.hostname !== 'localhost') {
+    hostInput.value = location.hostname;
+  } else {
+    hostInput.value = window.location.hostname || 'localhost';
+  }
+
+  // Extract session ID from URL path: /session/<id>
+  const pathMatch = location.pathname.match(/\/session\/(\d+)/);
+  if (pathMatch) {
+    $('session-input').value = pathMatch[1];
+    // Auto-connect after a short delay
+    setTimeout(() => connect(), 400);
+  } else {
+    // Try to fetch session list
+    fetchSessions();
+  }
+});
+
+async function fetchSessions() {
+  const host = $('host-input').value.trim() || location.hostname;
+  try {
+    const res = await fetch(`http://${host}:${HTTP_PORT || 8088}/`);
+    const data = await res.json();
+    if (data.sessions && data.sessions.length > 0) {
+      showSessions(data.sessions);
+      WS_PORT = data.ws_port || 8089;
+    }
+  } catch (e) {
+    // Server not reachable yet, that's fine
+  }
+}
+
+function showSessions(sessions) {
+  const list = $('sessions-list');
+  const container = $('sessions-container');
+  container.innerHTML = '';
+
+  if (sessions.length === 0) {
+    container.innerHTML = '<div class="no-sessions">No active Wolf sessions</div>';
+  } else {
+    sessions.forEach(sid => {
+      const item = document.createElement('div');
+      item.className = 'session-item';
+      item.innerHTML = `
+        <span class="session-id">${sid}</span>
+        <span class="session-connect">Connect →</span>
+      `;
+      item.onclick = () => {
+        $('session-input').value = sid;
+        connect();
+      };
+      container.appendChild(item);
+    });
+  }
+
+  list.style.display = 'block';
+}
+
+// ── Status helpers ────────────────────────────────────────────────────────────
+function setStatus(state, text) {
+  const dot = $('status-dot');
+  dot.className = `dot ${state}`;
+  $('status-text').textContent = text;
+}
+
+// ── WebRTC connection ─────────────────────────────────────────────────────────
+let WS_PORT = 8089;
+let HTTP_PORT = 8088;
+
+async function connect() {
+  const host      = $('host-input').value.trim() || window.location.hostname || 'localhost';
+  const sessionId = $('session-input').value.trim();
+
+  if (!sessionId) {
+    setStatus('error', 'Session ID required');
+    return;
+  }
+
+  $('connect-btn').disabled = true;
+  setStatus('busy', 'Connecting…');
+
+  // Create RTCPeerConnection
+  pc = new RTCPeerConnection({
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+    bundlePolicy: 'max-bundle'
+  });
+
+  // Add transceivers (receive-only)
+  pc.addTransceiver('video', { direction: 'recvonly' });
+  pc.addTransceiver('audio', { direction: 'recvonly' });
+
+  // Attach incoming stream to video element
+  pc.ontrack = (event) => {
+    const video = $('stream-video');
+    if (event.streams && event.streams[0]) {
+      video.srcObject = event.streams[0];
+      // Unmute once user interacts (autoplay policy)
+      video.muted = false;
+    }
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    const state = pc.iceConnectionState;
+    if (state === 'connected' || state === 'completed') {
+      setStatus('ok', 'Connected');
+      showStream();
+    } else if (state === 'failed' || state === 'disconnected') {
+      setStatus('error', `ICE ${state}`);
+    }
+  };
+
+  // Open WebSocket to signalling server
+  const wsUrl = `ws://${host}:${WS_PORT}/${sessionId}`;
+  setStatus('busy', `Connecting to ${wsUrl}…`);
+
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    setStatus('busy', 'Waiting for offer…');
+  };
+
+  ws.onmessage = async (event) => {
+    const msg = JSON.parse(event.data);
+
+    if (msg.type === 'offer') {
+      await pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp });
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp }));
+      setStatus('busy', 'Answer sent, waiting for ICE…');
+    }
+
+    else if (msg.type === 'ice' && msg.candidate) {
+      try {
+        await pc.addIceCandidate({
+          candidate: msg.candidate,
+          sdpMLineIndex: msg.sdpMLineIndex
+        });
+      } catch (e) {
+        console.warn('ICE candidate error:', e);
+      }
+    }
+  };
+
+  ws.onclose = () => {
+    if (pc && pc.iceConnectionState !== 'connected') {
+      setStatus('error', 'Signalling closed');
+      $('connect-btn').disabled = false;
+    }
+  };
+
+  ws.onerror = () => {
+    setStatus('error', `Cannot reach ${wsUrl}`);
+    $('connect-btn').disabled = false;
+  };
+
+  // Send ICE candidates to server
+  pc.onicecandidate = (event) => {
+    if (event.candidate && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'ice',
+        candidate: event.candidate.candidate,
+        sdpMLineIndex: event.candidate.sdpMLineIndex
+      }));
+    }
+  };
+}
+
+// ── Stream view ───────────────────────────────────────────────────────────────
+function showStream() {
+  $('connect-view').style.display = 'none';
+  $('stream-view').style.display  = 'block';
+  showOverlay();
+  startStats();
+}
+
+function hideStream() {
+  $('stream-view').style.display  = 'none';
+  $('connect-view').style.display = 'flex';
+  $('connect-btn').disabled = false;
+  releaseInput();
+  stopStats();
+  if (pc) { pc.close(); pc = null; }
+  if (ws) { ws.close(); ws = null; }
+  setStatus('idle', 'Disconnected');
+}
+
+function showOverlay() {
+  const overlay = $('stream-overlay');
+  overlay.classList.remove('hidden');
+  clearTimeout(overlayTimer);
+  overlayTimer = setTimeout(() => overlay.classList.add('hidden'), 3000);
+}
+
+// ── Input capture ─────────────────────────────────────────────────────────────
+// Keyboard and mouse events are forwarded to the server over the WebSocket
+// data channel. The server-side sidecar forwards these to Wolf's inputtino socket.
+
+$('stream-video').addEventListener('click', () => {
+  if (!inputCaptured) captureInput();
+});
+
+function captureInput() {
+  inputCaptured = true;
+  $('stream-video').requestPointerLock?.();
+  showOverlay();
+}
+
+function releaseInput() {
+  inputCaptured = false;
+  document.exitPointerLock?.();
+}
+
+document.addEventListener('pointerlockchange', () => {
+  inputCaptured = !!document.pointerLockElement;
+});
+
+// Forward keyboard events
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { hideStream(); return; }
+  if (e.key === 'F2') { toggleStats(); return; }
+  if (!inputCaptured || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'input', event: 'keydown', key: e.key, code: e.code }));
+  e.preventDefault();
+});
+
+document.addEventListener('keyup', (e) => {
+  if (!inputCaptured || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'input', event: 'keyup', key: e.key, code: e.code }));
+  e.preventDefault();
+});
+
+// Forward mouse movement (pointer lock gives delta, not absolute position)
+document.addEventListener('mousemove', (e) => {
+  if (!inputCaptured || !ws || ws.readyState !== WebSocket.OPEN) return;
+  if (!e.movementX && !e.movementY) return;
+  ws.send(JSON.stringify({ type: 'input', event: 'mousemove', dx: e.movementX, dy: e.movementY }));
+});
+
+document.addEventListener('mousedown', (e) => {
+  if (!inputCaptured || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'input', event: 'mousedown', button: e.button }));
+});
+
+document.addEventListener('mouseup', (e) => {
+  if (!inputCaptured || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'input', event: 'mouseup', button: e.button }));
+});
+
+document.addEventListener('wheel', (e) => {
+  if (!inputCaptured || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: 'input', event: 'wheel', dx: e.deltaX, dy: e.deltaY }));
+}, { passive: true });
+
+// ── Stats HUD ─────────────────────────────────────────────────────────────────
+function toggleStats() {
+  statsVisible = !statsVisible;
+  $('stats-hud').classList.toggle('visible', statsVisible);
+}
+
+function startStats() {
+  statsTimer = setInterval(updateStats, 2000);
+}
+
+function stopStats() {
+  clearInterval(statsTimer);
+  $('stats-hud').classList.remove('visible');
+  statsVisible = false;
+}
+
+async function updateStats() {
+  if (!pc || !statsVisible) return;
+  try {
+    const stats = await pc.getStats();
+    let videoBytes = 0, audioBitrate = 0, fps = 0, codec = '?', rtt = '?';
+    stats.forEach(r => {
+      if (r.type === 'inbound-rtp' && r.kind === 'video') {
+        videoBytes = r.bytesReceived || 0;
+        fps = r.framesPerSecond?.toFixed(0) || '?';
+        codec = r.decoderImplementation || '?';
+      }
+      if (r.type === 'candidate-pair' && r.state === 'succeeded') {
+        rtt = r.currentRoundTripTime ? `${(r.currentRoundTripTime * 1000).toFixed(0)}ms` : '?';
+      }
+    });
+    $('stats-hud').innerHTML =
+      `VIDEO  ${fps} fps · ${codec}<br>` +
+      `RTT    ${rtt}<br>` +
+      `RX     ${(videoBytes / 1024 / 1024).toFixed(1)} MB`;
+  } catch(e) {}
+}
+</script>
+</body>
+</html>

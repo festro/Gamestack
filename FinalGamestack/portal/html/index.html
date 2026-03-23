@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GameStack Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ── Reset & root ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:         #080b10;
+  --bg2:        #0d1119;
+  --bg3:        #121825;
+  --bg4:        #171f2e;
+  --border:     #1c2538;
+  --border2:    #243048;
+  --accent:     #4a9eff;
+  --accent-dim: rgba(74,158,255,.12);
+  --accent-glow:rgba(74,158,255,.25);
+  --green:      #2ecc8a;
+  --green-dim:  rgba(46,204,138,.1);
+  --red:        #ff4f4f;
+  --red-dim:    rgba(255,79,79,.1);
+  --amber:      #f5a623;
+  --amber-dim:  rgba(245,166,35,.1);
+  --text:       #c8d3ec;
+  --text2:      #8896b3;
+  --text3:      #4a5570;
+  --mono:       'JetBrains Mono', monospace;
+  --display:    'Syne', sans-serif;
+  --nav-w:      240px;
+  --header-h:   56px;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--display); overflow: hidden; }
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+.shell {
+  display: grid;
+  grid-template-columns: var(--nav-w) 1fr;
+  grid-template-rows: var(--header-h) 1fr;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+header {
+  grid-column: 1 / -1;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  gap: 16px;
+  position: relative;
+  z-index: 10;
+}
+
+.header-logo {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: .06em;
+  flex-shrink: 0;
+}
+
+.header-logo span { color: var(--text3); font-weight: 400; }
+
+.header-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border2);
+  flex-shrink: 0;
+}
+
+.header-breadcrumb {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  letter-spacing: .04em;
+}
+
+.header-breadcrumb .crumb-active { color: var(--text2); }
+
+.header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.host-pill {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 10px;
+}
+
+.uptime-badge {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--green);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pulse-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--green-dim); }
+  50%       { opacity: .6; box-shadow: 0 0 0 4px transparent; }
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+nav {
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 8px 0 20px;
+}
+
+.nav-section {
+  padding: 16px 16px 4px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background .12s, border-color .12s, color .12s;
+  text-decoration: none;
+  color: var(--text2);
+  font-size: 13px;
+  font-weight: 400;
+  position: relative;
+}
+
+.nav-item:hover {
+  background: var(--accent-dim);
+  color: var(--text);
+}
+
+.nav-item.active {
+  border-left-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.nav-icon {
+  width: 16px;
+  text-align: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  opacity: .7;
+}
+
+.nav-item.active .nav-icon,
+.nav-item:hover .nav-icon { opacity: 1; }
+
+.nav-badge {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 9px;
+  background: var(--bg4);
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--text3);
+}
+
+.nav-badge.ok  { background: var(--green-dim); border-color: var(--green); color: var(--green); }
+.nav-badge.err { background: var(--red-dim);   border-color: var(--red);   color: var(--red); }
+
+.nav-footer {
+  margin-top: auto;
+  padding: 14px 16px 0;
+  border-top: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  line-height: 1.8;
+}
+
+/* ── Main content area ───────────────────────────────────────────────────── */
+main {
+  overflow-y: auto;
+  background: var(--bg);
+  position: relative;
+}
+
+/* Pages */
+.page { display: none; padding: 28px 32px; min-height: 100%; }
+.page.active { display: block; }
+
+/* ── Page: Dashboard ─────────────────────────────────────────────────────── */
+.page-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 4px;
+  letter-spacing: -.01em;
+}
+
+.page-subtitle {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  margin-bottom: 28px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+/* Status grid */
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.stat-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 18px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color .15s;
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity .15s;
+}
+
+.stat-card:hover { border-color: var(--border2); }
+.stat-card:hover::before { opacity: 1; }
+
+.stat-card.green::before { background: var(--green); opacity: 1; }
+.stat-card.red::before   { background: var(--red);   opacity: 1; }
+.stat-card.amber::before { background: var(--amber); opacity: 1; }
+
+.stat-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 8px;
+}
+
+.stat-value {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.stat-value.green { color: var(--green); }
+.stat-value.red   { color: var(--red); }
+.stat-value.amber { color: var(--amber); }
+
+.stat-sub {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+}
+
+/* Section header */
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-family: var(--mono);
+}
+
+.section-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Service rows */
+.service-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 28px; }
+
+.service-row {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: border-color .12s;
+  cursor: default;
+}
+
+.service-row:hover { border-color: var(--border2); }
+
+.service-status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.service-status-dot.up     { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.service-status-dot.down   { background: var(--red); }
+.service-status-dot.unknown{ background: var(--text3); }
+
+.service-name {
+  font-size: 14px;
+  font-weight: 600;
+  min-width: 120px;
+}
+
+.service-desc {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  flex: 1;
+}
+
+.service-addr {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.service-addr a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.service-addr a:hover { text-decoration: underline; }
+
+.service-actions { display: flex; gap: 6px; margin-left: auto; }
+
+.btn-sm {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border2);
+  background: var(--bg3);
+  color: var(--text2);
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+  text-decoration: none;
+  letter-spacing: .04em;
+}
+
+.btn-sm:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-sm.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.btn-sm.primary:hover { opacity: .85; }
+
+/* ── Page: AMP iframe ────────────────────────────────────────────────────── */
+#page-amp { padding: 0; height: 100%; display: none; flex-direction: column; }
+#page-amp.active { display: flex; }
+
+.iframe-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.iframe-toolbar .toolbar-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.iframe-toolbar .toolbar-url {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text2);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 10px;
+}
+
+.amp-iframe {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: var(--bg);
+}
+
+/* ── Page: Stream (WebRTC) ───────────────────────────────────────────────── */
+#page-stream { padding: 28px 32px; }
+
+.stream-grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 20px;
+  align-items: start;
+}
+
+.stream-preview {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  aspect-ratio: 16/9;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stream-preview video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: none;
+}
+
+.stream-preview video.active { display: block; }
+
+.stream-placeholder {
+  text-align: center;
+  color: var(--text3);
+}
+
+.stream-placeholder .icon { font-size: 40px; margin-bottom: 10px; opacity: .4; }
+.stream-placeholder p { font-family: var(--mono); font-size: 12px; }
+
+.stream-controls {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.control-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.control-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 8px 10px;
+  outline: none;
+  margin-bottom: 14px;
+  transition: border-color .15s;
+}
+.control-input:focus { border-color: var(--accent); }
+
+.session-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+
+.session-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: border-color .12s, background .12s;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text2);
+}
+
+.session-chip:hover {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.chip-arrow { opacity: .5; font-size: 10px; }
+
+.btn-connect {
+  width: 100%;
+  padding: 10px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity .15s;
+  letter-spacing: .04em;
+}
+.btn-connect:hover { opacity: .88; }
+.btn-connect:disabled { opacity: .4; cursor: default; }
+
+.stream-status {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  min-height: 18px;
+}
+
+/* ── Page: Docs ──────────────────────────────────────────────────────────── */
+#page-docs { padding: 0; height: 100%; display: none; flex-direction: column; }
+#page-docs.active { display: flex; }
+.docs-iframe { flex: 1; width: 100%; border: none; background: var(--bg); }
+
+/* ── Page: Network ───────────────────────────────────────────────────────── */
+.net-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12px;
+  margin-bottom: 24px;
+}
+
+.net-table th {
+  text-align: left;
+  padding: 8px 12px;
+  background: var(--bg2);
+  color: var(--text3);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.net-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  vertical-align: middle;
+}
+
+.net-table tr:last-child td { border-bottom: none; }
+.net-table tr:hover td { background: var(--bg2); }
+
+.tag {
+  display: inline-block;
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  border: 1px solid transparent;
+}
+
+.tag.green { background: var(--green-dim); color: var(--green); border-color: var(--green); }
+.tag.amber { background: var(--amber-dim); color: var(--amber); border-color: var(--amber); }
+.tag.red   { background: var(--red-dim);   color: var(--red);   border-color: var(--red); }
+.tag.blue  { background: var(--accent-dim);color: var(--accent);border-color: var(--accent); }
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+/* ── Stagger animation ───────────────────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.page.active > * {
+  animation: fadeUp .25s ease both;
+}
+.page.active > *:nth-child(1) { animation-delay: .02s; }
+.page.active > *:nth-child(2) { animation-delay: .06s; }
+.page.active > *:nth-child(3) { animation-delay: .10s; }
+.page.active > *:nth-child(4) { animation-delay: .14s; }
+.page.active > *:nth-child(5) { animation-delay: .18s; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ── Header ──────────────────────────────────────────────────────────── -->
+  <header>
+    <div class="header-logo">GAME<span>STACK</span></div>
+    <div class="header-divider"></div>
+    <div class="header-breadcrumb">
+      <span id="breadcrumb">Dashboard</span>
+    </div>
+    <div class="header-right">
+      <div class="host-pill" id="host-pill">—</div>
+      <div class="uptime-badge">
+        <div class="pulse-dot"></div>
+        <span id="uptime-display">--:--:--</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+  <nav>
+    <div class="nav-section">Main</div>
+
+    <a class="nav-item active" data-page="dashboard" onclick="navigate('dashboard', 'Dashboard')">
+      <span class="nav-icon">⬛</span>
+      Dashboard
+    </a>
+
+    <div class="nav-section">Services</div>
+
+    <a class="nav-item" data-page="amp" onclick="navigate('amp', 'AMP › Game Servers')">
+      <span class="nav-icon">🎮</span>
+      AMP
+      <span class="nav-badge ok" id="nav-amp-badge">UP</span>
+    </a>
+
+    <a class="nav-item" data-page="stream" onclick="navigate('stream', 'Wolf › Stream')">
+      <span class="nav-icon">📡</span>
+      Wolf Stream
+      <span class="nav-badge ok" id="nav-wolf-badge">UP</span>
+    </a>
+
+    <div class="nav-section">Info</div>
+
+    <a class="nav-item" data-page="network" onclick="navigate('network', 'Network')">
+      <span class="nav-icon">🔗</span>
+      Network
+    </a>
+
+    <a class="nav-item" data-page="docs" onclick="navigate('docs', 'Docs')">
+      <span class="nav-icon">📄</span>
+      Docs
+    </a>
+
+    <div class="nav-footer">
+      your-username / YourNetwork<br>
+      GameStack Host · AMD 780M<br>
+      <span id="nav-time" style="color: var(--text2)"></span>
+    </div>
+  </nav>
+
+  <!-- ── Main ────────────────────────────────────────────────────────────── -->
+  <main>
+
+    <!-- Dashboard -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-title">Dashboard</div>
+      <div class="page-subtitle">GameStack v1.2 · your-hostname</div>
+
+      <!-- Status tiles -->
+      <div class="status-grid">
+        <div class="stat-card green" id="tile-amp">
+          <div class="stat-label">AMP</div>
+          <div class="stat-value green" id="tile-amp-val">—</div>
+          <div class="stat-sub">:8080</div>
+        </div>
+        <div class="stat-card" id="tile-wolf">
+          <div class="stat-label">Wolf</div>
+          <div class="stat-value" id="tile-wolf-val">—</div>
+          <div class="stat-sub">:47989</div>
+        </div>
+        <div class="stat-value" id="tile-game-val">—</div>
+          <div class="stat-sub">game server</div>
+        </div>
+        <div class="stat-card" id="tile-sidecar">
+          <div class="stat-label">WebRTC Sidecar</div>
+          <div class="stat-value" id="tile-sidecar-val">—</div>
+          <div class="stat-sub">:8088</div>
+        </div>
+      </div>
+
+      <!-- Services -->
+      <div class="section-head">
+        <div class="section-title">Services</div>
+        <div class="section-line"></div>
+      </div>
+
+      <div class="service-list">
+        <div class="service-row">
+          <div class="service-status-dot up" id="svc-amp-dot"></div>
+          <div class="service-name">AMP</div>
+          <div class="service-desc">Game server management panel</div>
+          <div class="service-addr"><a href="#" onclick="return false" target="_blank">YOUR_HOST_IP:8080</a></div>
+          <div class="service-actions">
+            <a class="btn-sm primary" onclick="navigate('amp', 'AMP › Game Servers')">Open</a>
+          </div>
+        </div>
+
+        <div class="service-row">
+          <div class="service-status-dot up" id="svc-wolf-dot"></div>
+          <div class="service-name">Wolf</div>
+          <div class="service-desc">Moonlight streaming host</div>
+          <div class="service-addr">YOUR_HOST_IP:47989</div>
+          <div class="service-actions">
+            <a class="btn-sm" onclick="navigate('stream', 'Wolf › Stream')">Stream</a>
+          </div>
+        </div>
+
+        <div class="service-name">Game Server</div>
+          <div class="service-desc">Dedicated game server · managed via AMP</div>
+          <div class="service-addr">
+            game.yourdomain.com
+          </div>
+          <div class="service-actions">
+            <a class="btn-sm" onclick="navigate('amp', 'AMP › Game Servers')">Manage</a>
+          </div>
+        </div>
+
+        <div class="service-row">
+          <div class="service-status-dot unknown" id="svc-sidecar-dot"></div>
+          <div class="service-name">WebRTC Sidecar</div>
+          <div class="service-desc">Browser streaming for Wolf sessions</div>
+          <div class="service-addr">YOUR_HOST_IP:8088</div>
+          <div class="service-actions">
+            <a class="btn-sm" onclick="navigate('stream', 'Wolf › Stream')">Launch</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Network summary -->
+      <div class="section-head">
+        <div class="section-title">Network</div>
+        <div class="section-line"></div>
+      </div>
+
+      <div class="service-list">
+        <div class="service-row">
+          <div class="service-status-dot up"></div>
+          <div class="service-name" style="font-size:13px">External</div>
+          <div class="service-desc">YOUR_PUBLIC_IP (ISP · dynamic)</div>
+          <div class="service-addr" style="font-family:var(--mono);font-size:11px;color:var(--amber)">⚠ DDNS not configured</div>
+          <div class="service-actions">
+            <a class="btn-sm" onclick="navigate('network', 'Network')">Details</a>
+          </div>
+        </div>
+        <div class="service-row">
+          <div class="service-status-dot up"></div>
+          <div class="service-name" style="font-size:13px">Tailscale</div>
+          <div class="service-desc">Mesh VPN · Your Router · all devices enrolled</div>
+          <div class="service-addr" style="font-family:var(--mono);font-size:11px">YourNetwork</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AMP iframe -->
+    <div class="page" id="page-amp">
+      <div class="iframe-toolbar">
+        <span class="toolbar-label">AMP Panel</span>
+        <span class="toolbar-url">YOUR_HOST_IP:8080</span>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <a class="btn-sm" href="#" onclick="return false" target="_blank">Open in new tab ↗</a>
+        </div>
+      </div>
+      <iframe class="amp-iframe" id="amp-iframe" src="about:blank" allowfullscreen></iframe>
+    </div>
+
+    <!-- Wolf Stream -->
+    <div class="page" id="page-stream">
+      <div class="page-title">Wolf Stream</div>
+      <div class="page-subtitle">WebRTC browser client</div>
+
+      <div class="stream-grid">
+        <!-- Preview -->
+        <div class="stream-preview" id="stream-preview">
+          <div class="stream-placeholder" id="stream-placeholder">
+            <div class="icon">📡</div>
+            <p>No active stream</p>
+            <p style="margin-top:4px;font-size:10px">Select a session and connect</p>
+          </div>
+          <video id="stream-video" autoplay playsinline></video>
+        </div>
+
+        <!-- Controls -->
+        <div class="stream-controls">
+          <label class="control-label">Sidecar Host</label>
+          <input class="control-input" id="ws-host" type="text" value="">
+
+          <label class="control-label">Session ID</label>
+          <input class="control-input" id="ws-session" type="text" placeholder="6323913000772626619">
+
+          <label class="control-label">Active Sessions</label>
+          <div class="session-chips" id="session-chips">
+            <div style="font-family:var(--mono);font-size:11px;color:var(--text3)">Fetching…</div>
+          </div>
+
+          <button class="btn-connect" id="stream-btn" onclick="streamConnect()">Connect</button>
+
+          <div class="stream-status">
+            <div class="service-status-dot unknown" id="stream-dot" style="width:7px;height:7px;flex-shrink:0"></div>
+            <span id="stream-status-text">Idle</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Network -->
+    <div class="page" id="page-network">
+      <div class="page-title">Network</div>
+      <div class="page-subtitle">Topology & DNS</div>
+
+      <div class="section-head"><div class="section-title">Topology</div><div class="section-line"></div></div>
+      <table class="net-table" style="margin-bottom:28px">
+        <thead><tr><th>Hop</th><th>Device</th><th>IP</th><th>Role</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>ISP Modem</td><td>—</td><td>Bridge / PPPoE</td><td><span class="tag green">UP</span></td></tr>
+          <tr><td>2</td><td>Asus Router</td><td>YOUR_MODEM_IP</td><td>NAT · Your Router DMZ'd</td><td><span class="tag green">UP</span></td></tr>
+          <tr><td>3</td><td>Your Router</td><td>YOUR_UPSTREAM_ROUTER_IP / YOUR_ROUTER_IP</td><td>Router · Wi-Fi 7 · Tailscale</td><td><span class="tag green">UP</span></td></tr>
+          <tr><td>4</td><td>GameStack Host</td><td>YOUR_HOST_IP</td><td>Game server host</td><td><span class="tag green">UP</span></td></tr>
+        </tbody>
+      </table>
+
+      <div class="section-head"><div class="section-title">Port Forwards (Your Router)</div><div class="section-line"></div></div>
+      <table class="net-table" style="margin-bottom:28px">
+        <thead><tr><th>Port</th><th>Protocol</th><th>Destination</th><th>Service</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>—</td><td>—</td><td>—</td><td>Add your game server port forwards here</td><td><span class="tag blue">—</span></td></tr>
+        </tbody>
+      </table>
+
+      <div class="section-head"><div class="section-title">DNS (Cloudflare)</div><div class="section-line"></div></div>
+      <table class="net-table" style="margin-bottom:28px">
+        <thead><tr><th>Record</th><th>Type</th><th>Value</th><th>Proxy</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>game.yourdomain.com</td><td>A</td><td>YOUR_PUBLIC_IP</td><td><span class="tag blue">DNS ONLY</span></td><td>Game server WAN access</td></tr>
+          <tr><td>yourdomain.com</td><td>A</td><td>—</td><td><span class="tag amber">PROXIED</span></td><td>Other services</td></tr>
+        </tbody>
+      </table>
+
+      <div class="section-head"><div class="section-title">Open Items</div><div class="section-line"></div></div>
+      <table class="net-table">
+        <thead><tr><th>Item</th><th>Impact</th><th>Priority</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>DDNS not configured — ISP IP is dynamic</td>
+            <td>game.yourdomain.com breaks when IP changes</td>
+            <td><span class="tag amber">MEDIUM</span></td>
+          </tr>
+          <tr>
+            <td>Router 2 router swap pending GameStack Host going wired</td>
+            <td>Port forwards will need recreating</td>
+            <td><span class="tag blue">LOW</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Docs iframe -->
+    <div class="page" id="page-docs">
+      <iframe class="docs-iframe" src="/docs/GameStack.html"></iframe>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ── Navigation ────────────────────────────────────────────────────────────────
+function navigate(pageId, label) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+  const page = document.getElementById('page-' + pageId);
+  if (page) page.classList.add('active');
+
+  const navItem = document.querySelector(`[data-page="${pageId}"]`);
+  if (navItem) navItem.classList.add('active');
+
+  document.getElementById('breadcrumb').textContent = label;
+
+  // Lazy-load AMP iframe
+  if (pageId === 'amp') {
+    const iframe = document.getElementById('amp-iframe');
+    if (iframe.src === 'about:blank') {
+      iframe.src = `http://${window.location.hostname}:8080`;
+    }
+  }
+
+  // Load sessions on stream page
+  if (pageId === 'stream') fetchSessions();
+}
+
+// ── Clock & uptime ────────────────────────────────────────────────────────────
+const startTime = Date.now();
+
+function updateClock() {
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('en-US', { hour12: false });
+  document.getElementById('nav-time').textContent = timeStr;
+
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+  const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+  const s = String(elapsed % 60).padStart(2, '0');
+  document.getElementById('uptime-display').textContent = `${h}:${m}:${s}`;
+}
+
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Service health checks ─────────────────────────────────────────────────────
+// We probe each service endpoint and update the status tiles/dots.
+// Uses fetch with a short timeout — failures are expected for some services
+// (Wolf API returns XML, AMP returns HTML etc).
+
+async function probe(url, timeout = 3000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeout);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal, mode: 'no-cors' });
+    clearTimeout(timer);
+    return true; // no-cors always returns opaque — success means reachable
+  } catch {
+    clearTimeout(timer);
+    return false;
+  }
+}
+
+function setTile(id, dotId, navBadgeId, up, label) {
+  const tile = document.getElementById('tile-' + id);
+  const val  = document.getElementById('tile-' + id + '-val');
+  const dot  = document.getElementById('svc-' + dotId + '-dot');
+  const badge = navBadgeId ? document.getElementById(navBadgeId) : null;
+
+  if (val) {
+    val.textContent = up ? 'UP' : 'DOWN';
+    val.className   = 'stat-value ' + (up ? 'green' : 'red');
+  }
+  if (tile) {
+    tile.className = 'stat-card ' + (up ? 'green' : 'red');
+  }
+  if (dot) {
+    dot.className = 'service-status-dot ' + (up ? 'up' : 'down');
+  }
+  if (badge) {
+    badge.textContent = up ? 'UP' : 'DOWN';
+    badge.className   = 'nav-badge ' + (up ? 'ok' : 'err');
+  }
+}
+
+async function checkServices() {
+  const HOST = window.location.hostname || 'localhost';
+  const [amp, wolf, sidecar] = await Promise.all([
+    probe(`http://${HOST}:8080`),
+    probe(`http://${HOST}:47989`),
+    probe(`http://${HOST}:8088`),
+  ]);
+
+  setTile('amp',     'amp',     'nav-amp-badge',  amp,     'AMP');
+  setTile('wolf',    'wolf',    'nav-wolf-badge',  wolf,    'Wolf');
+  setTile('sidecar', 'sidecar', null,              sidecar, 'Sidecar');
+  }
+
+checkServices();
+setInterval(checkServices, 30000);
+
+// ── WebRTC Stream ─────────────────────────────────────────────────────────────
+let pc = null, ws = null;
+
+async function fetchSessions() {
+  const host = document.getElementById('ws-host').value.trim() || window.location.hostname || 'localhost';
+  const chips = document.getElementById('session-chips');
+  try {
+    const res = await fetch(`http://${host}:8088/`);
+    const data = await res.json();
+    if (!data.sessions || data.sessions.length === 0) {
+      chips.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text3)">No active sessions</div>';
+      return;
+    }
+    chips.innerHTML = '';
+    data.sessions.forEach(sid => {
+      const chip = document.createElement('div');
+      chip.className = 'session-chip';
+      chip.innerHTML = `<span>${sid}</span><span class="chip-arrow">→</span>`;
+      chip.onclick = () => {
+        document.getElementById('ws-session').value = sid;
+      };
+      chips.appendChild(chip);
+    });
+  } catch {
+    chips.innerHTML = '<div style="font-family:var(--mono);font-size:11px;color:var(--text3)">Sidecar unreachable</div>';
+  }
+}
+
+function setStreamStatus(state, text) {
+  const dot = document.getElementById('stream-dot');
+  dot.className = 'service-status-dot ' + (state === 'up' ? 'up' : state === 'busy' ? 'unknown' : 'down');
+  if (state === 'busy') { dot.style.animation = 'pulse 1s infinite'; }
+  else { dot.style.animation = ''; }
+  document.getElementById('stream-status-text').textContent = text;
+}
+
+async function streamConnect() {
+  const host      = document.getElementById('ws-host').value.trim() || window.location.hostname || 'localhost';
+  const sessionId = document.getElementById('ws-session').value.trim();
+  if (!sessionId) { setStreamStatus('err', 'Session ID required'); return; }
+
+  document.getElementById('stream-btn').disabled = true;
+  setStreamStatus('busy', 'Connecting…');
+
+  pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }], bundlePolicy: 'max-bundle' });
+  pc.addTransceiver('video', { direction: 'recvonly' });
+  pc.addTransceiver('audio', { direction: 'recvonly' });
+
+  pc.ontrack = e => {
+    if (!e.streams[0]) return;
+    const video = document.getElementById('stream-video');
+    video.srcObject = e.streams[0];
+    video.classList.add('active');
+    document.getElementById('stream-placeholder').style.display = 'none';
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    const s = pc.iceConnectionState;
+    if (s === 'connected' || s === 'completed') setStreamStatus('up', 'Streaming');
+    if (s === 'failed' || s === 'disconnected') {
+      setStreamStatus('err', `ICE ${s}`);
+      document.getElementById('stream-btn').disabled = false;
+    }
+  };
+
+  ws = new WebSocket(`ws://${host}:8089/${sessionId}`);
+  ws.onopen = () => setStreamStatus('busy', 'Waiting for offer…');
+
+  ws.onmessage = async e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'offer') {
+      await pc.setRemoteDescription({ type: 'offer', sdp: msg.sdp });
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp }));
+      setStreamStatus('busy', 'Answer sent…');
+    } else if (msg.type === 'ice' && msg.candidate) {
+      pc.addIceCandidate({ candidate: msg.candidate, sdpMLineIndex: msg.sdpMLineIndex }).catch(() => {});
+    }
+  };
+
+  ws.onerror = () => {
+    setStreamStatus('err', 'Cannot reach sidecar');
+    document.getElementById('stream-btn').disabled = false;
+  };
+
+  pc.onicecandidate = e => {
+    if (e.candidate && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'ice', candidate: e.candidate.candidate, sdpMLineIndex: e.candidate.sdpMLineIndex }));
+    }
+  };
+}
+</script>
+</body>
+</html>
