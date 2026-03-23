@@ -142,8 +142,6 @@ const SECTIONS = [
       ]},
     ],
   },
-    ],
-  },
   {
     title: 'Completed Work',
     content: [

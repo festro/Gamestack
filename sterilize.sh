@@ -164,7 +164,7 @@ echo ""
 [ "$DRY_RUN" = true ] && echo -e "  ${YELLOW}Dry run — no files will be modified.${RESET}\n"
 
 if [ "$DRY_RUN" = false ]; then
-    printf "  ${YELLOW}This will overwrite values in tracked files. Continue?${RESET} [y/N]: "
+    printf "  ${YELLOW}This will overwrite tracked files AND purge .env, .preflight_env, and ampdata/. Continue?${RESET} [y/N]: "
     read -r ans
     [[ "$ans" =~ ^[Yy]$ ]] || { echo -e "\n  ${YELLOW}Aborted.${RESET}\n"; exit 0; }
 fi
@@ -240,10 +240,39 @@ for f in "${FILES[@]}"; do
     else
         content=$(cat "$f")
     fi
-    check_content "$f" "$content" || FOUND=1
+    check_content "$f" "$content" || { FOUND=1; true; }
 done
 
 [ "$FOUND" -eq 0 ] && ok "All clear — no personal values detected in tracked files"
+
+# ── Purge ─────────────────────────────────────────────────────────────────────
+if [ "$DRY_RUN" = false ]; then
+    section "Purging Credential Cache"
+
+    # .env — reset to placeholders
+    if [ -f .env.example ]; then
+        cp .env.example .env
+        ok ".env reset to placeholders"
+    else
+        warn ".env.example not found — cannot reset .env"
+    fi
+
+    # .preflight_env — delete to force re-run
+    if [ -f .preflight_env ]; then
+        rm -f .preflight_env
+        ok ".preflight_env deleted"
+    else
+        info ".preflight_env not present — skipping"
+    fi
+
+    # ampdata/ — wipe entirely
+    if [ -d ampdata ]; then
+        rm -rf ampdata/
+        ok "ampdata/ wiped"
+    else
+        info "ampdata/ not present — skipping"
+    fi
+fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
@@ -253,9 +282,9 @@ if [ "$DRY_RUN" = true ]; then
     echo "  Run without --check to apply:"
     echo -e "  ${BOLD}bash sterilize.sh${RESET}"
 else
-    echo -e "  ${GREEN}${BOLD}Sterilization complete.${RESET}"
+    echo -e "  ${GREEN}${BOLD}Sterilization and purge complete.${RESET}"
     echo ""
     echo "  Safe to commit:"
-    echo -e "  ${BOLD}git add -A && git commit -m 'v1.2 initial'${RESET}"
+    echo -e "  ${BOLD}git add -A && git commit -m 'v1.3'${RESET}"
 fi
 echo ""

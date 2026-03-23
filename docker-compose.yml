@@ -67,8 +67,6 @@ services:
       - SIDECAR_WS_PORT=8089
       - STUN_SERVER=stun://stun.l.google.com:19302
       - WOLF_SESSION_IDS=${WOLF_SESSION_IDS:-}
-    volumes:
-      - /dev/dri:/dev/dri
     devices:
       - /dev/dri:/dev/dri
     restart: unless-stopped

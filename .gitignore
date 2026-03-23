@@ -41,3 +41,5 @@ logs/
 # Contain live system values — never commit.
 output/GameStack.html
 output/GameStack.docx
+node_modules/
+output/

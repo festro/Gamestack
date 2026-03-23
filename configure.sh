@@ -45,8 +45,9 @@ pause() {
 }
 
 confirm() {
-    local prompt="$1"
+    local prompt="$1" ans
     printf "\n  ${Y}${prompt}${RESET} [y/N]: "
+    read -rt 0.1 discard 2>/dev/null || true  # drain leftover newline from prior read -rsn1
     read -r ans
     [[ "$ans" =~ ^[Yy]$ ]]
 }
@@ -342,6 +343,7 @@ ENVEOF
         else
             gap
             printf "  Install missing packages now? [y/N]: "
+    read -rt 0.1 discard 2>/dev/null || true  # drain leftover newline from prior read -rsn1
             read -r ans
             [[ "$ans" =~ ^[Yy]$ ]] && DO_INSTALL=true
         fi
@@ -524,7 +526,7 @@ ask_ip() {
             done
             [ "$valid" = true ] && break
         fi
-        echo -e "  ${R}Invalid IP address. Expected format: 192.168.x.x${RESET}"
+        echo -e "  ${R}Invalid IP address. Expected format: 192.168.1.100${RESET}"
     done
     eval "$var='$val'"
 }
@@ -568,12 +570,17 @@ run_quick_edit() {
 
     CUR_AMP_USER=$(get_env AMP_USERNAME)
     CUR_AMP_MAC=$(get_env AMP_MAC)
+    AMP_CREDS_CHANGED=false
 
     printf "\n  ${C}▸ AMP username${RESET} ${DIM}[${CUR_AMP_USER}]${RESET}\n  > "
     read -r val
     if [ -n "$val" ] && [ "$val" != "$CUR_AMP_USER" ]; then
         apply_sed .env "$CUR_AMP_USER" "$val"
+        NEW_AMP_USER="$val"
+        AMP_CREDS_CHANGED=true
         ok "AMP username updated"
+    else
+        NEW_AMP_USER="$CUR_AMP_USER"
     fi
 
     printf "\n  ${C}▸ AMP password${RESET} ${DIM}(Enter to keep current, hidden)${RESET}\n  > "
@@ -581,6 +588,8 @@ run_quick_edit() {
     if [ -n "$val" ]; then
         CUR_AMP_PASS=$(get_env AMP_PASSWORD)
         apply_sed .env "$CUR_AMP_PASS" "$val"
+        NEW_AMP_PASS="$val"
+        AMP_CREDS_CHANGED=true
         ok "AMP password updated"
     fi
 
@@ -600,6 +609,18 @@ run_quick_edit() {
             ok "AMP MAC updated"
         else
             warn "Invalid MAC format — skipped"
+        fi
+    fi
+
+    # ── Reset AMP credentials if changed ─────────────────────────────────────
+    if [ "$AMP_CREDS_CHANGED" = true ]; then
+        gap
+        if docker ps --format "{{.Names}}" 2>/dev/null | grep -q "^amp$"; then
+            echo -e "  ${Y}AMP credentials changed.${RESET}"
+            echo -e "  ${DIM}Restart AMP for new credentials to take effect:${RESET}"
+            echo -e "  ${BOLD}  docker compose --env-file .env restart amp${RESET}"
+        else
+            info "AMP container not running — credentials will apply on next start"
         fi
     fi
 
@@ -807,6 +828,7 @@ run_wizard() {
     echo ""
 
     printf "  ${DIM}Do you already have an AMP account and licence key?${RESET} [y/N]: "
+    read -rt 0.1 discard 2>/dev/null || true  # drain leftover newline from prior read -rsn1
     read -r HAS_ACCOUNT
 
     if [[ ! "$HAS_ACCOUNT" =~ ^[Yy]$ ]]; then
@@ -958,6 +980,91 @@ run_wizard() {
     fi
 }
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AMP LICENCE ACTIVATION
+# ══════════════════════════════════════════════════════════════════════════════
+
+amp_activate_licence() {
+    local host_ip licence_key amp_url session result status grade_name reason login_response
+    host_ip="${HOST_IP:-$(ip route get 1.1.1.1 2>/dev/null | awk '/src/{for(i=1;i<=NF;i++) if($i=="src") print $(i+1); exit}')}"
+    licence_key="${AMP_LICENCE}"
+    amp_url="http://${host_ip}:8080"
+
+    if [ -z "$licence_key" ] || [ "$licence_key" = "your_amp_licence_key" ]; then
+        warn "AMP licence key not set — skipping activation"
+        return 1
+    fi
+
+    # Wait for AMP to become ready (up to 60 seconds)
+    gap
+    echo -e "  ${DIM}Waiting for AMP to be ready...${RESET}"
+    local attempts=0
+    while [ $attempts -lt 12 ]; do
+        if curl -sf "${amp_url}/" &>/dev/null 2>&1; then
+            break
+        fi
+        sleep 5
+        attempts=$((attempts + 1))
+    done
+
+    if [ $attempts -ge 12 ]; then
+        warn "AMP did not become ready in time — skipping licence activation"
+        info "Run configure.sh --config-only again once AMP is up to activate the licence"
+        return 1
+    fi
+
+    # Login to get session token
+    login_response=$(curl -s -X POST "${amp_url}/API/Core/Login" \
+        -H "Content-Type: application/json" \
+        -H "Accept: application/json" \
+        -d "{\"username\":\"${AMP_USERNAME}\",\"password\":\"${AMP_PASSWORD}\",\"token\":\"\",\"rememberMe\":false}" \
+        2>/dev/null)
+
+    session=$(printf '%s' "$login_response" | \
+        python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('sessionID',''))" 2>/dev/null)
+
+    if [ -z "$session" ]; then
+        warn "Could not log in to AMP — skipping licence activation"
+        info "Check AMP credentials and run configure.sh --config-only again"
+        return 1
+    fi
+
+    # Activate licence
+    result=$(curl -s -X POST "${amp_url}/API/Core/ActivateAMPLicence" \
+        -H "Accept: application/json" \
+        -H "Content-Type: application/json" \
+        -d "{\"SESSIONID\":\"${session}\",\"LicenceKey\":\"${licence_key}\",\"QueryOnly\":false}" \
+        2>/dev/null)
+
+    status=$(printf '%s' "$result" | \
+        python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('Status',False))" 2>/dev/null)
+    grade_name=$(printf '%s' "$result" | \
+        python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('Result',{}).get('GradeName',''))" 2>/dev/null)
+
+    if [ "$status" = "True" ]; then
+        ok "AMP licence activated — ${grade_name}"
+
+        # Set licence key in Instance Deployment defaults so new instances use it
+        local cfg_result
+        cfg_result=$(curl -s -X POST "${amp_url}/API/Core/SetConfigs" \
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json" \
+            -d "{\"SESSIONID\":\"${session}\",\"data\":{\"ADSModule.Defaults.NewInstanceKey\":\"${licence_key}\"}}" \
+            2>/dev/null)
+        if [ "$cfg_result" = "true" ]; then
+            ok "AMP instance deployment licence key set"
+        else
+            warn "Could not set instance deployment licence key — set manually via Configuration → Instance Deployment → Deployment Defaults → Licence Key"
+        fi
+    else
+        reason=$(printf '%s' "$result" | \
+            python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('Reason','Unknown error'))" 2>/dev/null)
+        warn "AMP licence activation failed: ${reason}"
+        info "Log in to AMP at ${amp_url} and activate manually via Admin → Licence"
+    fi
+}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # PHASE 3 — APPLY
 # ══════════════════════════════════════════════════════════════════════════════
@@ -998,6 +1105,31 @@ GAME_SUBDOMAIN=${GAME_SUBDOMAIN:-game}
 ENVEOF
 
     ok ".env written"
+
+    # ── AMP data purge ────────────────────────────────────────────────────────
+    # On a full configure, wipe existing AMP data so credentials take effect.
+    # AMP bakes credentials at first-run time — if old data exists it ignores env vars.
+    DATA_DIR_EXP="${DATA_DIR/#\~/$HOME}"
+    AMP_DATA="${DATA_DIR_EXP}/ampdata/.ampdata"
+    if [ -d "$AMP_DATA" ]; then
+        gap
+        echo -e "  ${Y}Existing AMP data found at: ${AMP_DATA}${RESET}"
+        echo -e "  ${DIM}AMP stores credentials internally and will ignore the new ones${RESET}"
+        echo -e "  ${DIM}unless this data is cleared.${RESET}"
+        gap
+        echo -e "  ${R}Warning: this will delete all AMP instance data including${RESET}"
+        echo -e "  ${R}game server configurations. Game save data is NOT affected.${RESET}"
+        gap
+        if confirm "Purge AMP data so new credentials take effect?"; then
+            docker stop amp 2>/dev/null || true
+            docker rm amp 2>/dev/null || true
+            rm -rf "$AMP_DATA"
+            ok "AMP data purged — will rebuild on next start with new credentials"
+        else
+            warn "AMP data kept — new credentials may not work until data is purged"
+            info "To apply new credentials without purging, restart AMP: docker compose --env-file .env restart amp"
+        fi
+    fi
 
     # ── portal/html/index.html ────────────────────────────────────────────────
     PORTAL="portal/html/index.html"
@@ -1044,9 +1176,13 @@ ENVEOF
         if confirm "Start the stack now? (runs setup.sh)"; then
             gap
             bash setup.sh
+            gap
+            echo -e "  ${BOLD}Activating AMP licence...${RESET}"
+            amp_activate_licence
         else
             gap
             info "Run 'bash setup.sh' when you're ready to start the stack."
+            info "Then run 'bash configure.sh --config-only' to activate the AMP licence."
         fi
     else
         warn "setup.sh not found — cannot start stack automatically"
