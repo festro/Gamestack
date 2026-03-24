@@ -237,7 +237,7 @@ main {
 /* Status grid */
 .status-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 12px;
   margin-bottom: 28px;
 }
@@ -401,41 +401,80 @@ main {
 }
 .btn-sm.primary:hover { opacity: .85; }
 
-/* ── Page: AMP iframe ────────────────────────────────────────────────────── */
-#page-amp { padding: 0; height: 100%; display: none; flex-direction: column; }
-#page-amp.active { display: flex; }
+/* ── Page: AMP launch panel ──────────────────────────────────────────────── */
+#page-amp { padding: 28px 32px; }
 
-.iframe-toolbar {
+.amp-launch-panel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 40px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 560px;
+}
+
+.amp-launch-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -.01em;
+}
+
+.amp-launch-desc {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text3);
+  line-height: 1.7;
+  border-left: 2px solid var(--border2);
+  padding-left: 12px;
+}
+
+.amp-launch-url-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 16px;
-  background: var(--bg2);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
 }
 
-.iframe-toolbar .toolbar-label {
+.amp-launch-url {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--accent);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 8px 14px;
+  flex: 1;
+  text-decoration: none;
+  transition: border-color .12s;
+}
+.amp-launch-url:hover { border-color: var(--accent); }
+
+.btn-launch {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 9px 20px;
+  border-radius: 5px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  text-decoration: none;
+  letter-spacing: .04em;
+  transition: opacity .12s;
+  flex-shrink: 0;
+}
+.btn-launch:hover { opacity: .85; }
+
+.amp-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-family: var(--mono);
   font-size: 11px;
   color: var(--text3);
-}
-
-.iframe-toolbar .toolbar-url {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text2);
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 3px 10px;
-}
-
-.amp-iframe {
-  flex: 1;
-  width: 100%;
-  border: none;
-  background: var(--bg);
 }
 
 /* ── Page: Stream (WebRTC) ───────────────────────────────────────────────── */
@@ -618,6 +657,110 @@ main {
 .tag.red   { background: var(--red-dim);   color: var(--red);   border-color: var(--red); }
 .tag.blue  { background: var(--accent-dim);color: var(--accent);border-color: var(--accent); }
 
+/* ── PIN Widget ──────────────────────────────────────────────────────────── */
+.pin-widget {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 28px;
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.pin-widget-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.pin-widget-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  margin-bottom: 10px;
+}
+
+.pin-url-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.pin-url {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 10px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.pin-url:hover { border-color: var(--accent); }
+
+.pin-copy-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border2);
+  background: var(--bg3);
+  color: var(--text2);
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+  flex-shrink: 0;
+  letter-spacing: .04em;
+}
+.pin-copy-btn:hover { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.pin-copy-btn.copied { background: var(--green-dim); border-color: var(--green); color: var(--green); }
+
+.pin-wolf-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  margin-bottom: 10px;
+}
+
+.pin-note {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  line-height: 1.6;
+  border-left: 2px solid var(--border2);
+  padding-left: 10px;
+}
+
+.pin-note span { color: var(--amber); }
+
+.pin-qr {
+  flex-shrink: 0;
+  width: 108px;
+  height: 108px;
+  background: #fff;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.pin-qr canvas { display: block; }
+
 /* ── Scrollbar ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: var(--bg2); }
@@ -637,6 +780,7 @@ main {
 .page.active > *:nth-child(3) { animation-delay: .10s; }
 .page.active > *:nth-child(4) { animation-delay: .14s; }
 .page.active > *:nth-child(5) { animation-delay: .18s; }
+.page.active > *:nth-child(6) { animation-delay: .22s; }
 </style>
 </head>
 <body>
@@ -662,39 +806,39 @@ main {
   <nav>
     <div class="nav-section">Main</div>
 
-    <a class="nav-item active" data-page="dashboard" onclick="navigate('dashboard', 'Dashboard')">
+    <a class="nav-item active" href="javascript:void(0)" data-page="dashboard" onclick="navigate('dashboard', 'Dashboard')">
       <span class="nav-icon">⬛</span>
       Dashboard
     </a>
 
     <div class="nav-section">Services</div>
 
-    <a class="nav-item" data-page="amp" onclick="navigate('amp', 'AMP › Game Servers')">
+    <a class="nav-item" href="javascript:void(0)" data-page="amp" onclick="navigate('amp', 'AMP › Game Servers')">
       <span class="nav-icon">🎮</span>
       AMP
-      <span class="nav-badge ok" id="nav-amp-badge">UP</span>
+      <span class="nav-badge" id="nav-amp-badge">—</span>
     </a>
 
-    <a class="nav-item" data-page="stream" onclick="navigate('stream', 'Wolf › Stream')">
+    <a class="nav-item" href="javascript:void(0)" data-page="stream" onclick="navigate('stream', 'Wolf › Stream')">
       <span class="nav-icon">📡</span>
       Wolf Stream
-      <span class="nav-badge ok" id="nav-wolf-badge">UP</span>
+      <span class="nav-badge" id="nav-wolf-badge">—</span>
     </a>
 
     <div class="nav-section">Info</div>
 
-    <a class="nav-item" data-page="network" onclick="navigate('network', 'Network')">
+    <a class="nav-item" href="javascript:void(0)" data-page="network" onclick="navigate('network', 'Network')">
       <span class="nav-icon">🔗</span>
       Network
     </a>
 
-    <a class="nav-item" data-page="docs" onclick="navigate('docs', 'Docs')">
+    <a class="nav-item" href="javascript:void(0)" data-page="docs" onclick="navigate('docs', 'Docs')">
       <span class="nav-icon">📄</span>
       Docs
     </a>
 
     <div class="nav-footer">
-      festro33 / Game Server<br>
+      your_amp_username / Game Server<br>
       GameStack Host · AMD 780M<br>
       <span id="nav-time" style="color: var(--text2)"></span>
     </div>
@@ -706,22 +850,56 @@ main {
     <!-- Dashboard -->
     <div class="page active" id="page-dashboard">
       <div class="page-title">Dashboard</div>
-      <div class="page-subtitle">GameStack v1.2 · Daemonic-nucbox</div>
+      <div class="page-subtitle">GameStack v1.5 · Daemonic-nucbox</div>
+
+      <!-- Wolf Pairing Widget -->
+      <div class="section-head">
+        <div class="section-title">Moonlight Pairing</div>
+        <div class="section-line"></div>
+      </div>
+
+      <div class="pin-widget">
+        <div class="pin-widget-left">
+          <div class="pin-widget-title">Wolf Pairing Endpoint</div>
+
+          <div class="pin-wolf-status">
+            <div class="service-status-dot unknown" id="pin-wolf-dot"></div>
+            <span id="pin-wolf-status-text">Checking Wolf…</span>
+          </div>
+
+          <div class="pin-url-row">
+            <a class="pin-url" id="pin-url-display" href="#" target="_blank">—</a>
+            <button class="pin-copy-btn" id="pin-copy-btn" onclick="copyPairUrl()">Copy</button>
+          </div>
+
+          <div class="pin-note">
+            Open Moonlight → Add Host → enter the IP above.<br>
+            Wolf will show a <span>4-digit PIN</span> in its container logs.<br>
+            Check with: <span>docker logs wolf --tail 20</span>
+          </div>
+        </div>
+
+        <div class="pin-qr" id="pin-qr">
+          <!-- QR rendered here by JS -->
+        </div>
+      </div>
 
       <!-- Status tiles -->
       <div class="status-grid">
-        <div class="stat-card green" id="tile-amp">
+        <div class="stat-card" id="tile-amp">
           <div class="stat-label">AMP</div>
-          <div class="stat-value green" id="tile-amp-val">—</div>
+          <div class="stat-value" id="tile-amp-val">—</div>
           <div class="stat-sub">:8080</div>
+        </div>
+        <div class="stat-card" id="tile-game">
+          <div class="stat-label">Game Server</div>
+          <div class="stat-value" id="tile-game-val">—</div>
+          <div class="stat-sub">via AMP</div>
         </div>
         <div class="stat-card" id="tile-wolf">
           <div class="stat-label">Wolf</div>
           <div class="stat-value" id="tile-wolf-val">—</div>
           <div class="stat-sub">:47989</div>
-        </div>
-        <div class="stat-value" id="tile-game-val">—</div>
-          <div class="stat-sub">game server</div>
         </div>
         <div class="stat-card" id="tile-sidecar">
           <div class="stat-label">WebRTC Sidecar</div>
@@ -738,32 +916,32 @@ main {
 
       <div class="service-list">
         <div class="service-row">
-          <div class="service-status-dot up" id="svc-amp-dot"></div>
+          <div class="service-status-dot unknown" id="svc-amp-dot"></div>
           <div class="service-name">AMP</div>
           <div class="service-desc">Game server management panel</div>
-          <div class="service-addr"><a href="#" target="_blank" onclick="this.href='http://'+window.location.hostname+':8080';return true;">192.168.8.115:8080</a></div>
+          <div class="service-addr"><a href="#" target="_blank" onclick="this.href='http://'+window.location.hostname+':8080';return true;" id="svc-amp-addr">—</a></div>
           <div class="service-actions">
-            <a class="btn-sm primary" onclick="navigate('amp', 'AMP › Game Servers')">Open</a>
+            <a class="btn-sm primary" href="javascript:void(0)" onclick="navigate('amp', 'AMP › Game Servers')">Open</a>
           </div>
         </div>
 
         <div class="service-row">
-          <div class="service-status-dot up" id="svc-wolf-dot"></div>
-          <div class="service-name">Wolf</div>
-          <div class="service-desc">Moonlight streaming host</div>
-          <div class="service-addr"><a href="#" target="_blank" onclick="this.href='http://'+window.location.hostname+':47989';return true;">192.168.8.115:47989</a></div>
+          <div class="service-status-dot unknown" id="svc-game-dot"></div>
+          <div class="service-name">Game Server</div>
+          <div class="service-desc">Dedicated game server · managed via AMP</div>
+          <div class="service-addr" id="svc-game-addr">game.yourdomain.com</div>
           <div class="service-actions">
-            <a class="btn-sm" onclick="navigate('stream', 'Wolf › Stream')">Stream</a>
+            <a class="btn-sm" href="javascript:void(0)" onclick="navigate('amp', 'AMP › Game Servers')">Manage</a>
           </div>
         </div>
 
-        <div class="service-name">Game Server</div>
-          <div class="service-desc">Dedicated game server · managed via AMP</div>
-          <div class="service-addr">
-            play.layonet.org
-          </div>
+        <div class="service-row">
+          <div class="service-status-dot unknown" id="svc-wolf-dot"></div>
+          <div class="service-name">Wolf</div>
+          <div class="service-desc">Moonlight streaming host</div>
+          <div class="service-addr"><a href="#" target="_blank" onclick="this.href='http://'+window.location.hostname+':47989';return true;" id="svc-wolf-addr">—</a></div>
           <div class="service-actions">
-            <a class="btn-sm" onclick="navigate('amp', 'AMP › Game Servers')">Manage</a>
+            <a class="btn-sm" href="javascript:void(0)" onclick="navigate('stream', 'Wolf › Stream')">Stream</a>
           </div>
         </div>
 
@@ -771,9 +949,9 @@ main {
           <div class="service-status-dot unknown" id="svc-sidecar-dot"></div>
           <div class="service-name">WebRTC Sidecar</div>
           <div class="service-desc">Browser streaming for Wolf sessions</div>
-          <div class="service-addr"><a href="#" target="_blank" onclick="this.href='http://'+window.location.hostname+':8088';return true;">192.168.8.115:8088</a></div>
+          <div class="service-addr"><a href="#" target="_blank" onclick="this.href='http://'+window.location.hostname+':8088';return true;" id="svc-sidecar-addr">—</a></div>
           <div class="service-actions">
-            <a class="btn-sm" onclick="navigate('stream', 'Wolf › Stream')">Launch</a>
+            <a class="btn-sm" href="javascript:void(0)" onclick="navigate('stream', 'Wolf › Stream')">Launch</a>
           </div>
         </div>
       </div>
@@ -788,10 +966,10 @@ main {
         <div class="service-row">
           <div class="service-status-dot up"></div>
           <div class="service-name" style="font-size:13px">External</div>
-          <div class="service-desc">76.174.140.129 (ISP · dynamic)</div>
+          <div class="service-desc">YOUR_PUBLIC_IP (ISP · dynamic)</div>
           <div class="service-addr" style="font-family:var(--mono);font-size:11px;color:var(--amber)">⚠ DDNS not configured</div>
           <div class="service-actions">
-            <a class="btn-sm" onclick="navigate('network', 'Network')">Details</a>
+            <a class="btn-sm" href="javascript:void(0)" onclick="navigate('network', 'Network')">Details</a>
           </div>
         </div>
         <div class="service-row">
@@ -803,16 +981,29 @@ main {
       </div>
     </div>
 
-    <!-- AMP iframe -->
+    <!-- AMP launch panel -->
     <div class="page" id="page-amp">
-      <div class="iframe-toolbar">
-        <span class="toolbar-label">AMP Panel</span>
-        <span class="toolbar-url">192.168.8.115:8080</span>
-        <div style="margin-left:auto;display:flex;gap:8px">
-          <a class="btn-sm" href="#" target="_blank" onclick="this.href='http://'+window.location.hostname+':8080';return true;">Open in new tab ↗</a>
+      <div class="page-title">AMP</div>
+      <div class="page-subtitle">Game Server Management</div>
+
+      <div class="amp-launch-panel">
+        <div class="amp-launch-title">AMP Panel</div>
+
+        <div class="amp-status-row">
+          <div class="service-status-dot unknown" id="amp-panel-dot"></div>
+          <span id="amp-panel-status-text">Checking AMP…</span>
+        </div>
+
+        <div class="amp-launch-desc">
+          AMP blocks embedding in iframes for security reasons.<br>
+          Click Open to launch it in a new tab.
+        </div>
+
+        <div class="amp-launch-url-row">
+          <a class="amp-launch-url" id="amp-launch-url" href="#" target="_blank">—</a>
+          <a class="btn-launch" id="amp-launch-btn" href="#" target="_blank">Open ↗</a>
         </div>
       </div>
-      <iframe class="amp-iframe" id="amp-iframe" src="about:blank" allowfullscreen></iframe>
     </div>
 
     <!-- Wolf Stream -->
@@ -834,7 +1025,7 @@ main {
         <!-- Controls -->
         <div class="stream-controls">
           <label class="control-label">Sidecar Host</label>
-          <input class="control-input" id="ws-host" type="text" value="">
+          <input class="control-input" id="ws-host" type="text" placeholder="auto">
 
           <label class="control-label">Session ID</label>
           <input class="control-input" id="ws-session" type="text" placeholder="6323913000772626619">
@@ -864,9 +1055,9 @@ main {
         <thead><tr><th>Hop</th><th>Device</th><th>IP</th><th>Role</th><th>Status</th></tr></thead>
         <tbody>
           <tr><td>1</td><td>ISP Modem</td><td>—</td><td>Bridge / PPPoE</td><td><span class="tag green">UP</span></td></tr>
-          <tr><td>2</td><td>Asus Router</td><td>YOUR_MODEM_IP</td><td>NAT · Your Router DMZ'd</td><td><span class="tag green">UP</span></td></tr>
-          <tr><td>3</td><td>Your Router</td><td>192.168.8.115 / 192.168.8.115</td><td>Router · Wi-Fi 7 · Tailscale</td><td><span class="tag green">UP</span></td></tr>
-          <tr><td>4</td><td>GameStack Host</td><td>192.168.8.115</td><td>Game server host</td><td><span class="tag green">UP</span></td></tr>
+          <tr><td>2</td><td>Asus Router</td><td></td><td>NAT · Your Router DMZ'd</td><td><span class="tag green">UP</span></td></tr>
+          <tr><td>3</td><td>Your Router</td><td>YOUR_HOST_IP / YOUR_HOST_IP</td><td>Router · Wi-Fi 7 · Tailscale</td><td><span class="tag green">UP</span></td></tr>
+          <tr><td>4</td><td>GameStack Host</td><td>YOUR_HOST_IP</td><td>Game server host</td><td><span class="tag green">UP</span></td></tr>
         </tbody>
       </table>
 
@@ -882,8 +1073,8 @@ main {
       <table class="net-table" style="margin-bottom:28px">
         <thead><tr><th>Record</th><th>Type</th><th>Value</th><th>Proxy</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td>play.layonet.org</td><td>A</td><td>76.174.140.129</td><td><span class="tag blue">DNS ONLY</span></td><td>Game server WAN access</td></tr>
-          <tr><td>layonet.org</td><td>A</td><td>—</td><td><span class="tag amber">PROXIED</span></td><td>Other services</td></tr>
+          <tr><td>game.yourdomain.com</td><td>A</td><td>YOUR_PUBLIC_IP</td><td><span class="tag blue">DNS ONLY</span></td><td>Game server WAN access</td></tr>
+          <tr><td>yourdomain.com</td><td>A</td><td>—</td><td><span class="tag amber">PROXIED</span></td><td>Other services</td></tr>
         </tbody>
       </table>
 
@@ -893,7 +1084,7 @@ main {
         <tbody>
           <tr>
             <td>DDNS not configured — ISP IP is dynamic</td>
-            <td>play.layonet.org breaks when IP changes</td>
+            <td>game.yourdomain.com breaks when IP changes</td>
             <td><span class="tag amber">MEDIUM</span></td>
           </tr>
           <tr>
@@ -913,7 +1104,23 @@ main {
   </main>
 </div>
 
+<!-- QR code library (MIT licence, no tracking) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
 <script>
+// ── Init ──────────────────────────────────────────────────────────────────────
+const HOST = window.location.hostname || 'localhost';
+
+// Populate host-dependent display strings once
+document.getElementById('host-pill').textContent = HOST;
+document.getElementById('svc-amp-addr').textContent   = HOST + ':8080';
+document.getElementById('svc-wolf-addr').textContent  = HOST + ':47989';
+document.getElementById('svc-sidecar-addr').textContent = HOST + ':8088';
+const AMP_URL = `http://${HOST}:8080`;
+document.getElementById('amp-launch-url').textContent = AMP_URL;
+document.getElementById('amp-launch-url').href = AMP_URL;
+document.getElementById('amp-launch-btn').href = AMP_URL;
+
 // ── Navigation ────────────────────────────────────────────────────────────────
 function navigate(pageId, label) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -927,13 +1134,7 @@ function navigate(pageId, label) {
 
   document.getElementById('breadcrumb').textContent = label;
 
-  // Lazy-load AMP iframe
-  if (pageId === 'amp') {
-    const iframe = document.getElementById('amp-iframe');
-    if (iframe.src === 'about:blank') {
-      iframe.src = `http://${window.location.hostname}:8080`;
-    }
-  }
+  // AMP opens in new tab — no iframe to load
 
   // Load sessions on stream page
   if (pageId === 'stream') fetchSessions();
@@ -944,8 +1145,7 @@ const startTime = Date.now();
 
 function updateClock() {
   const now = new Date();
-  const timeStr = now.toLocaleTimeString('en-US', { hour12: false });
-  document.getElementById('nav-time').textContent = timeStr;
+  document.getElementById('nav-time').textContent = now.toLocaleTimeString('en-US', { hour12: false });
 
   const elapsed = Math.floor((Date.now() - startTime) / 1000);
   const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
@@ -958,66 +1158,118 @@ setInterval(updateClock, 1000);
 updateClock();
 
 // ── Service health checks ─────────────────────────────────────────────────────
-// We probe each service endpoint and update the status tiles/dots.
-// Uses fetch with a short timeout — failures are expected for some services
-// (Wolf API returns XML, AMP returns HTML etc).
-
 async function probe(url, timeout = 3000) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeout);
   try {
-    const res = await fetch(url, { signal: ctrl.signal, mode: 'no-cors' });
+    await fetch(url, { signal: ctrl.signal, mode: 'no-cors' });
     clearTimeout(timer);
-    return true; // no-cors always returns opaque — success means reachable
+    return true;
   } catch {
     clearTimeout(timer);
     return false;
   }
 }
 
-function setTile(id, dotId, navBadgeId, up, label) {
-  const tile = document.getElementById('tile-' + id);
-  const val  = document.getElementById('tile-' + id + '-val');
-  const dot  = document.getElementById('svc-' + dotId + '-dot');
+function setTile(id, dotId, navBadgeId, up) {
+  const tile  = document.getElementById('tile-' + id);
+  const val   = document.getElementById('tile-' + id + '-val');
+  const dot   = document.getElementById('svc-' + dotId + '-dot');
   const badge = navBadgeId ? document.getElementById(navBadgeId) : null;
 
-  if (val) {
-    val.textContent = up ? 'UP' : 'DOWN';
-    val.className   = 'stat-value ' + (up ? 'green' : 'red');
-  }
-  if (tile) {
-    tile.className = 'stat-card ' + (up ? 'green' : 'red');
-  }
-  if (dot) {
-    dot.className = 'service-status-dot ' + (up ? 'up' : 'down');
-  }
-  if (badge) {
-    badge.textContent = up ? 'UP' : 'DOWN';
-    badge.className   = 'nav-badge ' + (up ? 'ok' : 'err');
-  }
+  if (val)  { val.textContent = up ? 'UP' : 'DOWN'; val.className = 'stat-value ' + (up ? 'green' : 'red'); }
+  if (tile) { tile.className = 'stat-card ' + (up ? 'green' : 'red'); }
+  if (dot)  { dot.className = 'service-status-dot ' + (up ? 'up' : 'down'); }
+  if (badge){ badge.textContent = up ? 'UP' : 'DOWN'; badge.className = 'nav-badge ' + (up ? 'ok' : 'err'); }
 }
 
 async function checkServices() {
-  const HOST = window.location.hostname || 'localhost';
   const [amp, wolf, sidecar] = await Promise.all([
     probe(`http://${HOST}:8080`),
     probe(`http://${HOST}:47989`),
     probe(`http://${HOST}:8088`),
   ]);
 
-  setTile('amp',     'amp',     'nav-amp-badge',  amp,     'AMP');
-  setTile('wolf',    'wolf',    'nav-wolf-badge',  wolf,    'Wolf');
-  setTile('sidecar', 'sidecar', null,              sidecar, 'Sidecar');
-  }
+  setTile('amp',     'amp',     'nav-amp-badge',  amp);
+  setTile('wolf',    'wolf',    'nav-wolf-badge',  wolf);
+  setTile('sidecar', 'sidecar', null,              sidecar);
+
+  // Game server tile — proxied through AMP status for now
+  setTile('game', 'game', null, amp);
+
+  // Update AMP launch panel status dot
+  const ampDot  = document.getElementById('amp-panel-dot');
+  const ampText = document.getElementById('amp-panel-status-text');
+  if (ampDot)  ampDot.className  = 'service-status-dot ' + (amp ? 'up' : 'down');
+  if (ampText) ampText.textContent = amp ? 'AMP is UP — ready to manage' : 'AMP is DOWN — start the stack first';
+
+  // Update PIN widget Wolf status
+  updatePinWidget(wolf);
+}
 
 checkServices();
 setInterval(checkServices, 30000);
+
+// ── PIN / Pairing Widget ──────────────────────────────────────────────────────
+const PAIR_URL = `http://${HOST}:47989`;
+let qrRendered = false;
+
+function updatePinWidget(wolfUp) {
+  const dot  = document.getElementById('pin-wolf-dot');
+  const text = document.getElementById('pin-wolf-status-text');
+  const urlEl = document.getElementById('pin-url-display');
+
+  dot.className = 'service-status-dot ' + (wolfUp ? 'up' : 'down');
+  text.textContent = wolfUp ? 'Wolf is UP — ready to pair' : 'Wolf is DOWN — start the stack first';
+  urlEl.textContent = PAIR_URL;
+  urlEl.href = PAIR_URL;
+
+  // Render QR once
+  if (!qrRendered) {
+    const container = document.getElementById('pin-qr');
+    container.innerHTML = '';
+    try {
+      new QRCode(container, {
+        text: PAIR_URL,
+        width:  100,
+        height: 100,
+        colorDark:  '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M,
+      });
+      qrRendered = true;
+    } catch(e) {
+      container.innerHTML = '<div style="font-family:var(--mono);font-size:9px;color:#888;padding:8px;text-align:center">QR unavailable</div>';
+    }
+  }
+}
+
+function copyPairUrl() {
+  navigator.clipboard.writeText(PAIR_URL).then(() => {
+    const btn = document.getElementById('pin-copy-btn');
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  }).catch(() => {
+    // Fallback for non-secure contexts
+    const ta = document.createElement('textarea');
+    ta.value = PAIR_URL;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    const btn = document.getElementById('pin-copy-btn');
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  });
+}
 
 // ── WebRTC Stream ─────────────────────────────────────────────────────────────
 let pc = null, ws = null;
 
 async function fetchSessions() {
-  const host = document.getElementById('ws-host').value.trim() || window.location.hostname || 'localhost';
+  const host = document.getElementById('ws-host').value.trim() || HOST;
   const chips = document.getElementById('session-chips');
   try {
     const res = await fetch(`http://${host}:8088/`);
@@ -1031,9 +1283,7 @@ async function fetchSessions() {
       const chip = document.createElement('div');
       chip.className = 'session-chip';
       chip.innerHTML = `<span>${sid}</span><span class="chip-arrow">→</span>`;
-      chip.onclick = () => {
-        document.getElementById('ws-session').value = sid;
-      };
+      chip.onclick = () => { document.getElementById('ws-session').value = sid; };
       chips.appendChild(chip);
     });
   } catch {
@@ -1044,13 +1294,12 @@ async function fetchSessions() {
 function setStreamStatus(state, text) {
   const dot = document.getElementById('stream-dot');
   dot.className = 'service-status-dot ' + (state === 'up' ? 'up' : state === 'busy' ? 'unknown' : 'down');
-  if (state === 'busy') { dot.style.animation = 'pulse 1s infinite'; }
-  else { dot.style.animation = ''; }
+  dot.style.animation = state === 'busy' ? 'pulse 1s infinite' : '';
   document.getElementById('stream-status-text').textContent = text;
 }
 
 async function streamConnect() {
-  const host      = document.getElementById('ws-host').value.trim() || window.location.hostname || 'localhost';
+  const host      = document.getElementById('ws-host').value.trim() || HOST;
   const sessionId = document.getElementById('ws-session').value.trim();
   if (!sessionId) { setStreamStatus('err', 'Session ID required'); return; }
 

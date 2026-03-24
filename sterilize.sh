@@ -91,6 +91,8 @@ BUILD_EXPRS=(
 )
 
 USER_EXPRS=(
+    's|~/Git/Gamestack|~/Git/Gamestack|g'
+    's|~/Git/Gamestack\b|~/Git/Gamestack|g'
     's|festro33|your-username|g'
     's|Daemonic-nucbox|your-hostname|g'
     's|play\.layonet\.org|game.yourdomain.com|g'
@@ -286,5 +288,43 @@ else
     echo ""
     echo "  Safe to commit:"
     echo -e "  ${BOLD}git add -A && git commit -m 'v1.3'${RESET}"
+    echo ""
+
+    # ── Re-patch portal from .env ──────────────────────────────────────────────
+    # Sterilize rewrites portal/html/index.html with placeholders.
+    # Since git dir = data dir, nginx immediately serves the sterilized file.
+    # Re-patch restores live values so the portal stays usable after commit.
+    if [ -f .env ]; then
+        section "Re-patching Portal"
+        _env_get() { grep "^${1}=" .env 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'"; }
+        _P="portal/html/index.html"
+
+        _HOST_IP=$(_env_get HOST_IP)
+        _PUBLIC_IP=$(_env_get PUBLIC_IP)
+        _ROUTER_IP=$(_env_get ROUTER_IP)
+        _UPSTREAM_IP=$(_env_get UPSTREAM_IP)
+        _MODEM_IP=$(_env_get MODEM_IP)
+        _DOMAIN=$(_env_get DOMAIN)
+        _SUBDOMAIN=$(_env_get GAME_SUBDOMAIN)
+        _SUBDOMAIN="${_SUBDOMAIN:-game}"
+        _USERNAME=$(_env_get AMP_USERNAME)
+        _HOSTNAME=$(hostname 2>/dev/null || echo "")
+
+        [ -n "$_HOST_IP"     ] && sed -i "s|YOUR_HOST_IP|${_HOST_IP}|g"                "$_P"
+        [ -n "$_PUBLIC_IP"   ] && sed -i "s|YOUR_PUBLIC_IP|${_PUBLIC_IP}|g"            "$_P"
+        [ -n "$_ROUTER_IP"   ] && sed -i "s|YOUR_ROUTER_IP|${_ROUTER_IP}|g"            "$_P"
+        [ -n "$_UPSTREAM_IP" ] && sed -i "s|YOUR_UPSTREAM_ROUTER_IP|${_UPSTREAM_IP}|g" "$_P"
+        [ -n "$_MODEM_IP"    ] && sed -i "s|YOUR_MODEM_IP|${_MODEM_IP}|g"              "$_P"
+        [ -n "$_HOSTNAME"    ] && sed -i "s|your-hostname|${_HOSTNAME}|g"               "$_P"
+        [ -n "$_USERNAME"    ] && sed -i "s|your-username|${_USERNAME}|g"               "$_P"
+        if [ -n "$_DOMAIN" ]; then
+            sed -i "s|game\.yourdomain\.com|${_SUBDOMAIN}.${_DOMAIN}|g" "$_P"
+            sed -i "s|yourdomain\.com|${_DOMAIN}|g"                     "$_P"
+        fi
+        ok "Portal re-patched with live values from .env"
+        info "Portal is serving live values. Sterilized values are committed to git."
+    else
+        warn ".env not found — portal not re-patched. Run 'bash configure.sh' to reconfigure."
+    fi
 fi
 echo ""

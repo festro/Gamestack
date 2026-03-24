@@ -23,7 +23,7 @@ if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR);
 const META = {
   title:    'GameStack',
   subtitle: 'Infrastructure & Operations Documentation',
-  version:  'v1.4',
+  version:  'v1.5',
   date:     'Mar 23 2026',
   owner:    'your-username / YourNetwork',
 };
@@ -175,7 +175,7 @@ const SECTIONS = [
         { status: 'done', text: 'sterilize.sh — commit message updated to v1.4, set -e fragility fixed, .env/ampdata purge section added' },
         { status: 'done', text: 'docker-compose.yml — duplicate /dev/dri volumes entry removed from wolf-webrtc' },
         { status: 'done', text: 'sidecar.py — codec probe added, detects H264 vs HEVC, refuses with actionable error if HEVC detected' },
-        { status: 'done', text: '.env symlink removed — each directory (Gamestack/ and Gamestack_Live/) has independent .env' },
+        { status: 'done', text: '.env symlink removed — Gamestack/ has its own independent .env' },
         { status: 'done', text: 'v1.4 committed and pushed to github.com/festro/Gamestack' },
       ]},
       { type: 'h2', text: 'Network' },
@@ -220,8 +220,8 @@ const SECTIONS = [
         { text: 'Spectrum public IP is dynamic (currently YOUR_PUBLIC_IP) — DDNS setup required for reliability' },
         { text: 'Any proxied service: keep proxied via Cloudflare — use .well-known delegation when federation needed' },
         { text: 'wolf-webrtc sidecar codec probe: detects H264 vs HEVC before building GStreamer pipeline — Wolf must be set to H264 for WebRTC path' },
-        { text: '.env is independent in Gamestack/ and Gamestack_Live/ — no symlink, each dir manages its own config' },
-        { text: 'Key paths: live=~/Git/Gamestack_Live/, git=~/Git/Gamestack/, data=/home/festro33/Gamestack/' },
+        { text: '.env is independent in Gamestack/ — no symlink, dir manages its own config' },
+        { text: 'Key paths: git=~/Git/Gamestack/, data=~/Git/Gamestack/' },
       ]},
     ],
   },
@@ -231,7 +231,7 @@ const SECTIONS = [
       { type: 'bullets', items: [
         { status: 'open', text: 'Wolf UI — read backtrace dump in wolf-config/cfg/, consider testing ghcr.io/games-on-whales/wolf:master' },
         { status: 'open', text: 'Wolf audio — pulsesrc error reading data -1, investigate PulseAudio socket timing/permissions between wolf and WolfPulseAudio containers' },
-        { status: 'open', text: 'DDNS — set up ddclient or Cloudflare API script for play.layonet.org dynamic IP rotation' },
+        { status: 'open', text: 'DDNS — set up ddclient or Cloudflare API script for game.yourdomain.com dynamic IP rotation' },
         { status: 'open', text: 'Portal end-to-end test — verify AMP iframe and link fixes against live stack after fresh configure run' },
         { status: 'open', text: 'Router 2 transition — when K8 Plus goes wired: swap router, recreate port forwards, update DNS connection name' },
         { status: 'open', text: 'Streaming client CNVi Wi-Fi swap — Your Wi-Fi adapter' },

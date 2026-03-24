@@ -99,8 +99,37 @@ fi
 # ── Portal files ──────────────────────────────────────────────────────────────
 echo ""
 echo "=== Syncing portal files ==="
-cp portal/html/index.html   "${DATA_DIR}/portal/html/index.html"
+cp portal/html/index.html    "${DATA_DIR}/portal/html/index.html"
 cp portal/nginx/default.conf "${DATA_DIR}/portal/nginx/default.conf"
+
+# ── Patch portal placeholders from .env ───────────────────────────────────────
+# Runs on every setup so manual file drops always get re-patched.
+_env_get() { grep "^${1}=" .env 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'"; }
+_P="${DATA_DIR}/portal/html/index.html"
+
+_HOST_IP=$(_env_get HOST_IP)
+_PUBLIC_IP=$(_env_get PUBLIC_IP)
+_ROUTER_IP=$(_env_get ROUTER_IP)
+_UPSTREAM_IP=$(_env_get UPSTREAM_IP)
+_MODEM_IP=$(_env_get MODEM_IP)
+_DOMAIN=$(_env_get DOMAIN)
+_SUBDOMAIN=$(_env_get GAME_SUBDOMAIN)
+_SUBDOMAIN="${_SUBDOMAIN:-game}"
+_USERNAME=$(_env_get AMP_USERNAME)
+_HOSTNAME=$(hostname 2>/dev/null || echo "")
+
+[ -n "$_HOST_IP"     ] && sed -i "s|YOUR_HOST_IP|${_HOST_IP}|g"               "$_P"
+[ -n "$_PUBLIC_IP"   ] && sed -i "s|YOUR_PUBLIC_IP|${_PUBLIC_IP}|g"           "$_P"
+[ -n "$_ROUTER_IP"   ] && sed -i "s|YOUR_ROUTER_IP|${_ROUTER_IP}|g"           "$_P"
+[ -n "$_UPSTREAM_IP" ] && sed -i "s|YOUR_UPSTREAM_ROUTER_IP|${_UPSTREAM_IP}|g" "$_P"
+[ -n "$_MODEM_IP"    ] && sed -i "s|YOUR_MODEM_IP|${_MODEM_IP}|g"             "$_P"
+[ -n "$_HOSTNAME"    ] && sed -i "s|your-hostname|${_HOSTNAME}|g"              "$_P"
+[ -n "$_USERNAME"    ] && sed -i "s|your-username|${_USERNAME}|g"              "$_P"
+if [ -n "$_DOMAIN" ]; then
+  sed -i "s|game\.yourdomain\.com|${_SUBDOMAIN}.${_DOMAIN}|g" "$_P"
+  sed -i "s|yourdomain\.com|${_DOMAIN}|g"                     "$_P"
+fi
+echo "[+] Portal placeholders patched from .env"
 
 if [ -f output/GameStack.html ]; then
   cp output/GameStack.html "${DATA_DIR}/portal/docs/GameStack.html"
