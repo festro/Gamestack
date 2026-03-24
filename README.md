@@ -1,5 +1,7 @@
 # GameStack
 
+> **This is a vibe-coding project** — built entirely through iterative AI-assisted sessions with no formal software engineering background. Every script, config, and line of portal UI was written collaboratively with Claude. If something looks overengineered for a home lab, that's why, and that's the point.
+
 A self-contained portable gaming LAN stack. Runs game servers and streams containerised desktops/games to Moonlight clients or any browser via WebRTC. Fully portable — tar the folder, move to any Linux + Docker machine, run `setup.sh`.
 
 **Designed to run from `~/Git/Gamestack`.**
@@ -68,7 +70,7 @@ Portal: `http://<host-ip>/`
 ## Services
 
 ### Portal — `http://<host-ip>/`
-Dashboard with live service health checks, AMP embedded in an iframe, Wolf WebRTC stream launcher, network topology reference, and ops docs. Host IP auto-detected from `window.location.hostname`.
+Dashboard with live service health checks, AMP panel (iframe on Chrome, launch panel on Firefox), Wolf WebRTC stream launcher, Moonlight pairing widget with QR code, network topology reference, and ops docs. Host IP auto-detected from `window.location.hostname`.
 
 ### AMP — `http://<host-ip>:8080`
 Game server management. Add any AMP-supported game server via the AMP web UI. Servers auto-start on AMP boot.
