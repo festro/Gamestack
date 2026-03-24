@@ -38,9 +38,9 @@ services:
       - XDG_RUNTIME_DIR=/tmp/sockets
       - GOW_RUNTIME_DIR=/tmp/sockets
       - HOST_APPS_STATE_FOLDER=/etc/wolf
-      - PULSE_SERVER=unix:/tmp/sockets/pulse-socket
+      - PULSE_SERVER=/tmp/sockets/pulse-socket
     volumes:
-      - ${DATA_DIR}/wolf-config/cfg:/etc/wolf:rw
+      - ${DATA_DIR}/wolf-config:/etc/wolf:rw
       - /tmp/sockets:/tmp/sockets:rw
       - /var/run/docker.sock:/var/run/docker.sock:rw
       - /var/run/wolf:/var/run/wolf:rw

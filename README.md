@@ -2,7 +2,7 @@
 
 A self-contained portable gaming LAN stack. Runs game servers and streams containerised desktops/games to Moonlight clients or any browser via WebRTC. Fully portable — tar the folder, move to any Linux + Docker machine, run `setup.sh`.
 
-**Designed to run from `~/Gamestack`.**
+**Designed to run from `~/Git/Gamestack`.**
 
 ## Stack
 
@@ -23,10 +23,10 @@ A self-contained portable gaming LAN stack. Runs game servers and streams contai
 ## Quick start
 
 ```bash
-git clone https://github.com/festro/Gamestack ~/Gamestack
+git clone https://github.com/festro/Gamestack ~/Git/Gamestack
 # Or if installing from zip:
-# unzip -X Gamestack-final.zip && mv FinalGamestack ~/Gamestack
-cd ~/Gamestack
+# unzip -X Gamestack-final.zip && mv FinalGamestack ~/Git/Gamestack
+cd ~/Git/Gamestack
 cp .env.example .env
 # Edit .env — fill in DATA_DIR, AMP credentials, licence key, MAC address
 bash setup.sh
@@ -37,7 +37,7 @@ Portal: `http://<host-ip>/`
 ## Structure
 
 ```
-~/Gamestack/
+~/Git/Gamestack/
   docker-compose.yml              # All four services
   setup.sh                        # First-run and update script
   build.js                        # Generates output/GameStack.html + .docx
@@ -82,7 +82,7 @@ Browser streaming without Moonlight. Taps Wolf's GStreamer interpipe output and 
 ## Stopping the stack
 
 ```bash
-cd ~/Gamestack
+cd ~/Git/Gamestack
 docker compose down
 # Also stop any Wolf child containers (app sessions):
 docker ps -a --filter "name=Wolf" --format "{{.Names}}" | xargs -r docker rm -f
@@ -92,11 +92,11 @@ docker ps -a --filter "name=Wolf" --format "{{.Names}}" | xargs -r docker rm -f
 
 ```bash
 # On current machine
-tar -czf gamestack-backup.tar.gz ~/Gamestack/
+tar -czf gamestack-backup.tar.gz ~/Git/Gamestack/
 
 # On new machine
 tar -xzf gamestack-backup.tar.gz
-cd ~/Gamestack
+cd ~/Git/Gamestack
 bash setup.sh
 ```
 

@@ -1,8 +1,8 @@
 #!/bin/bash
 # GameStack Launcher
 # Status dashboard and control panel for the GameStack stack.
-# Run from anywhere: bash ~/Gamestack/gamestack
-# Or make executable and add ~/Gamestack to PATH: gamestack
+# Run from anywhere: bash ~/Git/Gamestack/gamestack
+# Or make executable and add ~/Git/Gamestack to PATH: gamestack
 
 cd "$(dirname "$0")"
 
@@ -173,6 +173,8 @@ while true; do
             fi
             echo -e "  ${BOLD}Restarting stack...${RESET}"
             echo ""
+            WOLF_CHILDREN=$(docker ps -a --filter "name=Wolf" --format "{{.Names}}" 2>/dev/null | grep -v "^wolf$|^wolf-webrtc$|^WolfPulseAudio$")
+            [ -n "$WOLF_CHILDREN" ] && echo "$WOLF_CHILDREN" | xargs docker rm -f 2>/dev/null || true
             log_cmd "restart" restart
             anykey
             ;;

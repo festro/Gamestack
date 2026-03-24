@@ -49,7 +49,7 @@ FILES=(
 
 ENV_EXPRS=(
     's|^\(TZ=\).*|\1America/Los_Angeles|'
-    's|^\(DATA_DIR=\).*|\1~/Gamestack|'
+    's|^\(DATA_DIR=\).*|\1~/Git/Gamestack|'
     's|^\(AMP_USERNAME=\).*|\1your_amp_username|'
     's|^\(USERNAME=\).*|\1your_amp_username|'
     's|^\(AMP_PASSWORD=\).*|\1your_amp_password|'

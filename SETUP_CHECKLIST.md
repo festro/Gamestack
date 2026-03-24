@@ -19,7 +19,7 @@ cp .env.example .env
 | Line | Field | Placeholder | What to set |
 |------|-------|-------------|-------------|
 | 7 | `TZ` | `America/Los_Angeles` | Your timezone — [full list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) |
-| 12 | `DATA_DIR` | `~/Gamestack` | Absolute path to your Gamestack dir. Use `~/Gamestack` if cloned to home. |
+| 12 | `DATA_DIR` | `~/Git/Gamestack` | Absolute path to your Gamestack dir. Use `~/Git/Gamestack` if cloned to home. |
 | 15 | `AMP_USERNAME` | `your_amp_username` | AMP login username |
 | 16 | `AMP_PASSWORD` | `your_amp_password` | AMP login password |
 | 17 | `AMP_LICENCE` | `your_amp_licence_key` | AMP licence key from the AMP portal |
@@ -76,7 +76,7 @@ functional features (health checks, AMP iframe, stream launcher). The items
 below are **display strings only** — update them so the portal shows your
 actual network info instead of placeholders.
 
-Quickest approach — run these from `~/Gamestack` after filling in your values:
+Quickest approach — run these from `~/Git/Gamestack` after filling in your values:
 
 ```bash
 HOST_IP=192.168.x.x           # Your host's LAN IP

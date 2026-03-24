@@ -890,7 +890,7 @@ run_wizard() {
     DETECTED_TZ=$(timedatectl show --property=Timezone --value 2>/dev/null || echo "America/Los_Angeles")
 
     ask          TZ        "Timezone (TZ database format)"              "$DETECTED_TZ"
-    ask          DATA_DIR  "GameStack data directory (absolute path)"   "~/Gamestack"
+    ask          DATA_DIR  "GameStack data directory (absolute path)"   "~/Git/Gamestack"
     ask          USERNAME  "Your Linux username"                        "$DETECTED_USER"
     ask          HOSTNAME_VAL "Your machine hostname"                   "$DETECTED_HOST"
     ask_ip       HOST_IP   "Host LAN IP (static)"                      "$DETECTED_IP" true
@@ -1084,7 +1084,7 @@ run_apply() {
     cp .env.example .env
 
     apply_sed .env "America/Los_Angeles"  "$TZ"
-    apply_sed .env "~/Gamestack"          "$DATA_DIR"
+    apply_sed .env "~/Git/Gamestack"          "$DATA_DIR"
     apply_sed .env "your_amp_username"    "$AMP_USERNAME"
     apply_sed .env "your_amp_password"    "$AMP_PASSWORD"
     apply_sed .env "your_amp_licence_key" "$AMP_LICENCE"
