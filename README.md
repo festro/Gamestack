@@ -1,10 +1,8 @@
 # GameStack
 
-> **This is a vibe-coding project** — built entirely through iterative AI-assisted sessions with no formal software engineering background. Every script, config, and line of portal UI was written collaboratively with Claude. If something looks overengineered for a home lab, that's why, and that's the point.
-
 A self-contained portable gaming LAN stack. Runs game servers and streams containerised desktops/games to Moonlight clients or any browser via WebRTC. Fully portable — tar the folder, move to any Linux + Docker machine, run `setup.sh`.
 
-**Designed to run from `~/Git/Gamestack`.**
+**Designed to run from `~/Gamestack`.**
 
 ## Stack
 
@@ -25,10 +23,10 @@ A self-contained portable gaming LAN stack. Runs game servers and streams contai
 ## Quick start
 
 ```bash
-git clone https://github.com/festro/Gamestack ~/Git/Gamestack
+git clone https://github.com/festro/Gamestack ~/Gamestack
 # Or if installing from zip:
-# unzip -X Gamestack-final.zip && mv FinalGamestack ~/Git/Gamestack
-cd ~/Git/Gamestack
+# unzip -X Gamestack-final.zip && mv FinalGamestack ~/Gamestack
+cd ~/Gamestack
 cp .env.example .env
 # Edit .env — fill in DATA_DIR, AMP credentials, licence key, MAC address
 bash setup.sh
@@ -39,7 +37,7 @@ Portal: `http://<host-ip>/`
 ## Structure
 
 ```
-~/Git/Gamestack/
+~/Gamestack/
   docker-compose.yml              # All four services
   setup.sh                        # First-run and update script
   build.js                        # Generates output/GameStack.html + .docx
@@ -70,7 +68,7 @@ Portal: `http://<host-ip>/`
 ## Services
 
 ### Portal — `http://<host-ip>/`
-Dashboard with live service health checks, AMP panel (iframe on Chrome, launch panel on Firefox), Wolf WebRTC stream launcher, Moonlight pairing widget with QR code, network topology reference, and ops docs. Host IP auto-detected from `window.location.hostname`.
+Dashboard with live service health checks, AMP embedded in an iframe, Wolf WebRTC stream launcher, network topology reference, and ops docs. Host IP auto-detected from `window.location.hostname`.
 
 ### AMP — `http://<host-ip>:8080`
 Game server management. Add any AMP-supported game server via the AMP web UI. Servers auto-start on AMP boot.
@@ -84,7 +82,7 @@ Browser streaming without Moonlight. Taps Wolf's GStreamer interpipe output and 
 ## Stopping the stack
 
 ```bash
-cd ~/Git/Gamestack
+cd ~/Gamestack
 docker compose down
 # Also stop any Wolf child containers (app sessions):
 docker ps -a --filter "name=Wolf" --format "{{.Names}}" | xargs -r docker rm -f
@@ -94,11 +92,11 @@ docker ps -a --filter "name=Wolf" --format "{{.Names}}" | xargs -r docker rm -f
 
 ```bash
 # On current machine
-tar -czf gamestack-backup.tar.gz ~/Git/Gamestack/
+tar -czf gamestack-backup.tar.gz ~/Gamestack/
 
 # On new machine
 tar -xzf gamestack-backup.tar.gz
-cd ~/Git/Gamestack
+cd ~/Gamestack
 bash setup.sh
 ```
 
