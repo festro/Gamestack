@@ -22,6 +22,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import signal
 import sys
 import threading
@@ -113,83 +114,19 @@ class WolfWebRTCSession:
         self._lock = threading.Lock()
         self._running = False
 
-    def _probe_codec(self, probe_timeout: float = 3.0) -> 'Optional[str]':
-        """
-        Probe the Wolf interpipe bus for this session to detect the video codec.
-        Returns 'H264', 'HEVC', or None if caps could not be read within timeout.
-
-        Builds a minimal throwaway pipeline:
-          interpipesrc -> fakesink (sync=false)
-        Attaches a pad probe on the sink pad to read caps, then tears it down.
-        """
-        sid = self.session_id
-        detected = [None]
-        done = threading.Event()
-
-        probe_str = (
-            f'interpipesrc listen-to={sid}_video is-live=true max-buffers=1 '
-            f'leaky-type=downstream ! fakesink name=probe_sink sync=false'
-        )
-
-        try:
-            probe_pipeline = Gst.parse_launch(probe_str)
-        except Exception as e:
-            log.warning(f'[{sid}] Codec probe pipeline failed to parse: {e}')
-            return None
-
-        sink = probe_pipeline.get_by_name('probe_sink')
-        sink_pad = sink.get_static_pad('sink') if sink else None
-
-        def on_pad_probe(pad, info):
-            caps = pad.get_current_caps()
-            if caps and not caps.is_empty() and not caps.is_any():
-                struct = caps.get_structure(0)
-                name = struct.get_name() if struct else ''
-                if 'x-h264' in name:
-                    detected[0] = 'H264'
-                elif 'x-h265' in name or 'x-hevc' in name:
-                    detected[0] = 'HEVC'
-            if detected[0]:
-                done.set()
-            return Gst.PadProbeReturn.OK
-
-        if sink_pad:
-            sink_pad.add_probe(Gst.PadProbeType.BUFFER, on_pad_probe)
-
-        probe_pipeline.set_state(Gst.State.PLAYING)
-        done.wait(timeout=probe_timeout)
-        probe_pipeline.set_state(Gst.State.NULL)
-
-        return detected[0]
-
     def start(self):
-        """
-        Probe Wolf's interpipe bus for codec, then build and start the pipeline.
-        Refuses to start if Wolf is using HEVC (not supported in most browsers
-        via WebRTC). Returns False with a clear log message in that case.
-        """
+        """Build and start the GStreamer pipeline."""
         sid = self.session_id
 
-        log.info(f'[{sid}] Probing Wolf interpipe for codec...')
-        codec = self._probe_codec()
-
-        if codec is None:
-            log.warning(
-                f'[{sid}] Could not detect codec — Wolf may not be streaming yet. '
-                f'Start a session in Moonlight first, then reconnect.'
-            )
-            return False
-
-        if codec == 'HEVC':
-            log.error(
-                f'[{sid}] Wolf is using HEVC — not supported by Chrome/Firefox via WebRTC. '
-                f'To fix: comment out [[gstreamer.video.hevc_encoders]] blocks in '
-                f'wolf-config/cfg/config.toml and restart Wolf. '
-                f'H264 will then be selected automatically.'
-            )
-            return False
-
-        log.info(f'[{sid}] Codec detected: {codec} — building pipeline')
+        # Wolf encodes to H264/HEVC and publishes on interpipe.
+        # We tap the encoded stream directly — no re-encode needed.
+        # webrtcbin needs RTP-packetised input.
+        #
+        # Video: interpipesrc → h264parse → rtph264pay → webrtcbin
+        # Audio: interpipesrc → opusparse → rtpopuspay → webrtcbin
+        #
+        # Note: Wolf may use HEVC. We try H264 first (wider browser support).
+        # If the session is HEVC-only, the pipeline will error and we log it.
 
         pipeline_str = f"""
             interpipesrc
@@ -415,6 +352,20 @@ async def ws_handler(websocket, manager: SessionManager):
 
 # ── HTTP Server (session list + static client) ────────────────────────────────
 
+def get_wolf_pin():
+    """Read Wolf container logs via Docker SDK and return the latest PIN URL as JSON."""
+    try:
+        import docker, re
+        client = docker.from_env()
+        logs = client.containers.get('wolf').logs(tail=50).decode('utf-8', errors='ignore')
+        matches = re.findall(r'http://[^\s]+/pin/#[0-9A-Fa-f]+', logs)
+        if matches:
+            return json.dumps({'pin_url': matches[-1], 'found': True})
+        return json.dumps({'pin_url': None, 'found': False})
+    except Exception as e:
+        return json.dumps({'pin_url': None, 'found': False, 'error': str(e)})
+
+
 def make_http_handler(manager: SessionManager, client_dir: str):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -437,6 +388,10 @@ def make_http_handler(manager: SessionManager, client_dir: str):
                         self._respond(200, 'text/html', f.read())
                 except FileNotFoundError:
                     self._respond(404, 'text/plain', b'Not found')
+
+            elif path == '/wolf-pin':
+                body = get_wolf_pin().encode()
+                self._respond(200, 'application/json', body)
 
             elif path.startswith('/session/'):
                 # /session/<id> → serve browser client

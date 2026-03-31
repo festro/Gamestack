@@ -23,8 +23,8 @@ if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR);
 const META = {
   title:    'GameStack',
   subtitle: 'Infrastructure & Operations Documentation',
-  version:  'v1.2',
-  date:     'Mar 22 2026',
+  version:  'v1.4',
+  date:     'Mar 30 2026',
   owner:    'your-username / YourNetwork',
 };
 
@@ -120,7 +120,7 @@ const SECTIONS = [
       { type: 'p', text: 'A self-contained portable gaming LAN stack running on the GameStack Host, streamable to the Streaming client via Moonlight/Wolf.' },
       { type: 'table2', rows: [
         ['GitHub',      'https://github.com/festro/Gamestack'],
-        ['Version',     'v1.2'],
+        ['Version',     'v1.4'],
         ['Path',        '/home/your-username/gamestack/'],
         ['Wolf Config', '/home/your-username/gamestack/wolf-config/'],
         ['AMP Web UI',  'http://YOUR_HOST_IP:8080'],
@@ -164,7 +164,7 @@ const SECTIONS = [
         { status: 'done', text: 'Wolf socket symlink persisted via systemd wolf-sock-symlink.service' },
         { status: 'done', text: 'Stream connects — HEVC decode, VAAPI, audio init all confirmed' },
         { status: 'warn', text: 'Wolf UI container not launching — Wolf returns empty response to launch requests. Binary backtrace dump in wolf-config/cfg/' },
-        { status: 'warn', text: 'Audio pulsesrc error reading data -1 — GStreamer audio pipeline dying post-connect' },
+        { status: 'done', text: 'Audio working — use Play Store Moonlight (not built-from-source). pulsesrc error reading data -1 is a client-side build issue.' },
       ]},
       { type: 'h2', text: 'Network' },
       { type: 'bullets', items: [
@@ -214,13 +214,13 @@ const SECTIONS = [
     title: 'Next Session Priorities',
     content: [
       { type: 'bullets', items: [
+        { status: 'open', text: 'Sterilize and commit v1.4 — portal PIN widget, sidecar /wolf-pin endpoint, docker-compose socket mount' },
         { status: 'open', text: 'Fix Wolf UI launch — Wolf returns empty response, investigate backtrace dump, consider testing newer Wolf build' },
-        { status: 'open', text: 'Fix Wolf audio — pulsesrc error reading data -1' },
         { status: 'open', text: 'DDNS setup — Cloudflare A record auto-update when Spectrum IP changes' },
-        { status: 'open', text: 'Router 2 router transition when GameStack Host goes wired' },
+        { status: 'open', text: 'Router 2 transition — when K8 Plus goes wired' },
+        { status: 'open', text: 'Add Steam to Wolf — activate config.toml entry, test session launch' },
+        { status: 'open', text: 'External V Rising test — connect through Brume 2 port forwards from outside LAN' },
         { status: 'open', text: 'Streaming client CNVi Wi-Fi swap — Your Wi-Fi adapter' },
-        { status: 'open', text: 'Add Steam to Wolf (config.toml entry already exists)' },
-        { status: 'open', text: 'Push v1.3 commit after Wolf UI working' },
       ]},
     ],
   },

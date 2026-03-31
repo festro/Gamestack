@@ -761,6 +761,39 @@ main {
 
 .pin-qr canvas { display: block; }
 
+.pin-divider { height: 1px; background: var(--border); margin: 12px 0; }
+.pin-input-label {
+  font-size: 10px; font-weight: 700; color: var(--text3);
+  text-transform: uppercase; letter-spacing: .1em; margin-bottom: 8px;
+}
+.pin-input-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pin-input {
+  font-family: var(--mono); font-size: 12px; color: var(--text);
+  background: var(--bg3); border: 1px solid var(--border2);
+  border-radius: 4px; padding: 5px 10px; flex: 1; min-width: 180px;
+  outline: none; transition: border-color .12s;
+}
+.pin-input::placeholder { color: var(--text3); }
+.pin-input:focus { border-color: var(--accent); }
+.pin-input.error { border-color: var(--red); }
+.pin-open-btn {
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  padding: 5px 14px; border-radius: 4px;
+  border: 1px solid var(--accent); background: var(--accent-dim);
+  color: var(--accent); cursor: pointer; letter-spacing: .06em;
+  transition: background .12s, color .12s; flex-shrink: 0;
+}
+.pin-open-btn:hover { background: var(--accent); color: var(--bg); }
+.pin-open-btn:disabled { opacity: .4; cursor: not-allowed; }
+.pin-status-msg {
+  font-size: 10px; color: var(--text3); margin-top: 7px;
+  min-height: 14px; transition: color .2s;
+}
+.pin-status-msg.ok   { color: var(--green); }
+.pin-status-msg.err  { color: var(--red); }
+.pin-status-msg.info { color: var(--amber); }
+
+
 /* ── Scrollbar ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: var(--bg2); }
@@ -872,10 +905,20 @@ main {
             <button class="pin-copy-btn" id="pin-copy-btn" onclick="copyPairUrl()">Copy</button>
           </div>
 
+          <div class="pin-divider"></div>
+          <div class="pin-input-label">Wolf PIN URL</div>
+          <div class="pin-input-row">
+            <input class="pin-input" id="pin-input" type="text"
+              placeholder="Auto-fetching from Wolf logs…"
+              oninput="onPinInput()"
+              onkeydown="if(event.key==='Enter') openPin()" />
+            <button class="pin-open-btn" id="pin-open-btn" onclick="openPin()" disabled>Open ↗</button>
+          </div>
+          <div class="pin-status-msg" id="pin-status-msg"></div>
           <div class="pin-note">
-            Open Moonlight → Add Host → enter the IP above.<br>
-            Wolf will show a <span>4-digit PIN</span> in its container logs.<br>
-            Check with: <span>docker logs wolf --tail 20</span>
+            1. Open Moonlight → Add Host → enter the IP above.<br>
+            2. Moonlight shows a PIN — the URL auto-fills here.<br>
+            3. Click <span>Open ↗</span> to complete pairing.
           </div>
         </div>
 
@@ -1264,6 +1307,63 @@ function copyPairUrl() {
     setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
   });
 }
+
+// ── PIN auto-fetch ────────────────────────────────────────────────────────────
+const PIN_RE = /http:\/\/.+\/pin\/#[0-9A-Fa-f]+/;
+let pinFetched = false;
+
+function fetchWolfPin() {
+  if (pinFetched) return;
+  fetch(`http://${HOST}:8088/wolf-pin`, { signal: AbortSignal.timeout(3000) })
+    .then(r => r.json())
+    .then(data => {
+      if (data.found && data.pin_url) {
+        const inp = document.getElementById('pin-input');
+        inp.value = data.pin_url;
+        inp.classList.remove('error');
+        document.getElementById('pin-open-btn').disabled = false;
+        const msg = document.getElementById('pin-status-msg');
+        msg.textContent = '✓ PIN URL fetched from Wolf — click Open to complete pairing';
+        msg.className = 'pin-status-msg ok';
+        pinFetched = true;
+      }
+    })
+    .catch(() => {});
+}
+
+function onPinInput() {
+  const val = document.getElementById('pin-input').value.trim();
+  const btn = document.getElementById('pin-open-btn');
+  const msg = document.getElementById('pin-status-msg');
+  const inp = document.getElementById('pin-input');
+  if (!val) {
+    btn.disabled = true; msg.textContent = '';
+    msg.className = 'pin-status-msg'; inp.classList.remove('error'); return;
+  }
+  if (PIN_RE.test(val)) {
+    btn.disabled = false;
+    msg.textContent = '✓ Valid PIN URL — click Open to complete pairing';
+    msg.className = 'pin-status-msg ok'; inp.classList.remove('error');
+  } else {
+    btn.disabled = true;
+    msg.textContent = 'Expected: http://host:47989/pin/#XXXXXXXXXXXXXXXX';
+    msg.className = 'pin-status-msg err'; inp.classList.add('error');
+  }
+}
+
+function openPin() {
+  const val = document.getElementById('pin-input').value.trim();
+  if (!PIN_RE.test(val)) return;
+  window.open(val, '_blank');
+  const msg = document.getElementById('pin-status-msg');
+  msg.textContent = 'PIN page opened — complete pairing in that tab.';
+  msg.className = 'pin-status-msg info';
+  pinFetched = false; // allow re-fetch for next pairing
+}
+
+// Poll every 3s for PIN URL while wolf is up
+fetchWolfPin();
+setInterval(fetchWolfPin, 3000);
 
 // ── WebRTC Stream ─────────────────────────────────────────────────────────────
 let pc = null, ws = null;

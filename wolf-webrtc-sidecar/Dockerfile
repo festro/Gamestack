@@ -54,7 +54,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # runtime deps for gst-interpipe
     libgstreamer1.0-0 \
     libgstreamer-plugins-base1.0-0 \
-    && pip3 install --break-system-packages websockets \
+    && pip3 install --break-system-packages websockets docker \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
