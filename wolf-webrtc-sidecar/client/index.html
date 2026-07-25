@@ -235,7 +235,7 @@
 <div id="connect-view">
   <div class="card">
     <div class="logo">Wolf Stream</div>
-    <div class="tagline">WebRTC Browser Client</div>
+    <div class="tagline">WebRTC Co-View · Read Only</div>
 
     <label for="host-input">Sidecar Host</label>
     <input type="text" id="host-input" placeholder="your-host-ip" />
@@ -260,17 +260,18 @@
 <!-- Stream View -->
 <div id="stream-view">
   <video id="stream-video" autoplay playsinline muted></video>
-  <div id="stream-overlay">Press <b>Esc</b> to disconnect · <b>F2</b> toggle stats · Click to capture input</div>
+  <div id="stream-overlay">Press <b>Esc</b> to disconnect · <b>F2</b> toggle stats · View-only — use Moonlight to play</div>
   <div id="stats-hud" title="WebRTC stats"></div>
 </div>
 
 <script>
 // ── State ─────────────────────────────────────────────────────────────────────
+let WS_PORT = 8089;
+let HTTP_PORT = 8088;
 let ws = null;
 let pc = null;
 let statsTimer = null;
 let overlayTimer = null;
-let inputCaptured = false;
 let statsVisible = false;
 
 const $ = id => document.getElementById(id);
@@ -299,7 +300,7 @@ window.addEventListener('load', () => {
 async function fetchSessions() {
   const host = $('host-input').value.trim() || location.hostname;
   try {
-    const res = await fetch(`http://${host}:${HTTP_PORT || 8088}/`);
+    const res = await fetch(`http://${host}:${HTTP_PORT}/`);
     const data = await res.json();
     if (data.sessions && data.sessions.length > 0) {
       showSessions(data.sessions);
@@ -344,9 +345,6 @@ function setStatus(state, text) {
 }
 
 // ── WebRTC connection ─────────────────────────────────────────────────────────
-let WS_PORT = 8089;
-let HTTP_PORT = 8088;
-
 async function connect() {
   const host      = $('host-input').value.trim() || window.location.hostname || 'localhost';
   const sessionId = $('session-input').value.trim();
@@ -458,7 +456,6 @@ function hideStream() {
   $('stream-view').style.display  = 'none';
   $('connect-view').style.display = 'flex';
   $('connect-btn').disabled = false;
-  releaseInput();
   stopStats();
   if (pc) { pc.close(); pc = null; }
   if (ws) { ws.close(); ws = null; }
@@ -472,65 +469,21 @@ function showOverlay() {
   overlayTimer = setTimeout(() => overlay.classList.add('hidden'), 3000);
 }
 
-// ── Input capture ─────────────────────────────────────────────────────────────
-// Keyboard and mouse events are forwarded to the server over the WebSocket
-// data channel. The server-side sidecar forwards these to Wolf's inputtino socket.
+// ── Input ─────────────────────────────────────────────────────────────────────
+// Co-view is deliberately view-only: Wolf routes input through Moonlight's
+// encrypted control channel, which a browser cannot join. Clicking the video
+// says so rather than pretending to grab the pointer.
 
 $('stream-video').addEventListener('click', () => {
-  if (!inputCaptured) captureInput();
-});
-
-function captureInput() {
-  inputCaptured = true;
-  $('stream-video').requestPointerLock?.();
+  const overlay = $('stream-overlay');
+  overlay.innerHTML = 'View-only stream — connect with Moonlight to play';
   showOverlay();
-}
-
-function releaseInput() {
-  inputCaptured = false;
-  document.exitPointerLock?.();
-}
-
-document.addEventListener('pointerlockchange', () => {
-  inputCaptured = !!document.pointerLockElement;
 });
 
-// Forward keyboard events
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { hideStream(); return; }
-  if (e.key === 'F2') { toggleStats(); return; }
-  if (!inputCaptured || !ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ type: 'input', event: 'keydown', key: e.key, code: e.code }));
-  e.preventDefault();
+  if (e.key === 'F2') { toggleStats(); }
 });
-
-document.addEventListener('keyup', (e) => {
-  if (!inputCaptured || !ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ type: 'input', event: 'keyup', key: e.key, code: e.code }));
-  e.preventDefault();
-});
-
-// Forward mouse movement (pointer lock gives delta, not absolute position)
-document.addEventListener('mousemove', (e) => {
-  if (!inputCaptured || !ws || ws.readyState !== WebSocket.OPEN) return;
-  if (!e.movementX && !e.movementY) return;
-  ws.send(JSON.stringify({ type: 'input', event: 'mousemove', dx: e.movementX, dy: e.movementY }));
-});
-
-document.addEventListener('mousedown', (e) => {
-  if (!inputCaptured || !ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ type: 'input', event: 'mousedown', button: e.button }));
-});
-
-document.addEventListener('mouseup', (e) => {
-  if (!inputCaptured || !ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ type: 'input', event: 'mouseup', button: e.button }));
-});
-
-document.addEventListener('wheel', (e) => {
-  if (!inputCaptured || !ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ type: 'input', event: 'wheel', dx: e.deltaX, dy: e.deltaY }));
-}, { passive: true });
 
 // ── Stats HUD ─────────────────────────────────────────────────────────────────
 function toggleStats() {

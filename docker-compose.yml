@@ -55,10 +55,14 @@ services:
     restart: unless-stopped
 
   # ── Wolf WebRTC Sidecar ───────────────────────────────────────────────────────
-  # Taps Wolf's GStreamer interpipe output and re-streams to browsers via WebRTC.
-  # Does NOT modify Wolf — safe to stop/remove independently.
-  # Standalone browser client: http://<host-ip>:8088/client
-  # WebSocket signalling:       ws://<host-ip>:8089/<session_id>
+  # Re-streams Wolf sessions to browsers via WebRTC (view-only co-watching;
+  # Moonlight stays the interactive path).
+  # Reads encoded frames from shm sockets in /tmp/sockets that Wolf writes once
+  # config.toml is patched:  bash wolf-webrtc-sidecar/apply-wolf-tap.sh
+  # Without that patch the sidecar simply reports no sessions.
+  # Browser client:       http://<host-ip>:8088/client
+  # Ingest/peer status:   http://<host-ip>:8088/status
+  # WebSocket signalling: ws://<host-ip>:8089/<session_id>
   wolf-webrtc:
     build:
       context: ./wolf-webrtc-sidecar
@@ -69,9 +73,9 @@ services:
       - SIDECAR_HTTP_PORT=8088
       - SIDECAR_WS_PORT=8089
       - STUN_SERVER=stun://stun.l.google.com:19302
-      - WOLF_SESSION_IDS=${WOLF_SESSION_IDS:-}
+      - TAP_DIR=/tmp/sockets
     volumes:
-      - /dev/dri:/dev/dri
+      - /tmp/sockets:/tmp/sockets:rw
       - /var/run/docker.sock:/var/run/docker.sock:ro
     devices:
       - /dev/dri:/dev/dri

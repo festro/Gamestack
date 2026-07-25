@@ -1,30 +1,46 @@
 #!/usr/bin/env python3
 """
-Wolf WebRTC Sidecar
--------------------
-Taps Wolf's GStreamer interpipe output and re-streams it to browsers via WebRTC.
+Wolf WebRTC Sidecar (v2 — shm tap)
+----------------------------------
+Streams Wolf sessions to browsers via WebRTC, view-only.
 
-Wolf publishes encoded video/audio on interpipe buses named:
-  {session_id}_video
-  {session_id}_audio
+How it gets the media (and why not interpipe):
+gst-interpipe only connects pipelines *within one process*, so a separate
+container can never "listen-to" Wolf's internal buses. Instead, Wolf's
+per-session sink pipeline (user-configurable in config.toml) is patched with a
+tee that serializes the already-encoded stream through gdppay into an shmsink
+socket under /tmp/sockets (a bind mount shared with this container):
 
-This sidecar discovers active session IDs by watching /var/run/wolf/wolf.sock
-(via the Wolf API) and spins up a webrtcsink pipeline for each active session.
+  tap_{session_id}_video   (H264/HEVC elementary stream, GDP-framed)
+  tap_{session_id}_audio   (Opus elementary stream, GDP-framed)
 
-Each session gets its own WebRTC endpoint accessible at:
-  http://<host>:8088/session/<session_id>
+See apply-wolf-tap.sh for the config.toml patch.
 
-A session list is available at:
-  http://<host>:8088/
+This sidecar watches TAP_DIR for tap_*_video sockets, builds one ingest
+pipeline per session (shmsrc ! gdpdepay ! parsebin ! rtp payloader ! tee),
+and attaches an independent webrtcbin per connected browser — so each peer
+gets its own SDP offer and multiple viewers can co-watch one session.
+
+Endpoints:
+  http://<host>:8088/            session list (JSON)
+  http://<host>:8088/status      ingest/peer stats (JSON)
+  http://<host>:8088/wolf-pin    latest Moonlight pairing PIN URL from Wolf logs
+  http://<host>:8088/client      browser client
+  ws://<host>:8089/<session_id>  signalling
+
+Known limitations (by design, documented in README):
+  - View-only. Input is not forwarded; Moonlight remains the interactive path.
+  - A viewer joining mid-stream shows video only from the next IDR frame.
+  - Streams exist only while a Moonlight client has an active session.
 """
 
 import asyncio
+import concurrent.futures
 import json
 import logging
 import os
 import re
 import signal
-import sys
 import threading
 import time
 from typing import Dict, Optional
@@ -37,9 +53,8 @@ from gi.repository import Gst, GLib, GstWebRTC, GstSdp
 
 import websockets
 import websockets.server
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
-import socket
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -55,275 +70,349 @@ log = logging.getLogger('wolf-sidecar')
 HTTP_PORT   = int(os.environ.get('SIDECAR_HTTP_PORT', 8088))
 WS_PORT     = int(os.environ.get('SIDECAR_WS_PORT',   8089))
 STUN_SERVER = os.environ.get('STUN_SERVER', 'stun://stun.l.google.com:19302')
+TAP_DIR     = os.environ.get('TAP_DIR', '/tmp/sockets')
+SCAN_SECS   = float(os.environ.get('TAP_SCAN_SECS', '2'))
 
-# Session IDs can be passed explicitly or auto-discovered.
-# Format: comma-separated list of session IDs
-# e.g. WOLF_SESSION_IDS=6323913000772626619,4161966709011769559
-MANUAL_SESSION_IDS = [
-    s.strip() for s in os.environ.get('WOLF_SESSION_IDS', '').split(',')
-    if s.strip()
-]
+TAP_VIDEO_RE = re.compile(r'^tap_(.+)_video$')
 
 Gst.init(None)
 
-# ── Signalling ────────────────────────────────────────────────────────────────
-# Simple per-session signalling: each browser connects via WebSocket,
-# receives an SDP offer, sends back an SDP answer + ICE candidates.
+# ── GLib thread bridge ────────────────────────────────────────────────────────
+# All pipeline graph surgery happens on the GLib main loop thread so it never
+# races GStreamer callbacks. Returns a concurrent.futures.Future.
 
-class SignallingPeer:
-    def __init__(self, session_id: str, ws):
-        self.session_id = session_id
+_glib_loop = GLib.MainLoop()
+
+def glib_call(fn, *args):
+    fut = concurrent.futures.Future()
+    def _run():
+        try:
+            fut.set_result(fn(*args))
+        except Exception as e:  # noqa: BLE001 — surfaced via future
+            fut.set_exception(e)
+        return False
+    GLib.idle_add(_run)
+    return fut
+
+
+# ── Peer ──────────────────────────────────────────────────────────────────────
+
+class Peer:
+    """One browser connection: its own webrtcbin + queues inside the session pipeline."""
+
+    _counter = 0
+
+    def __init__(self, session, ws, loop):
+        Peer._counter += 1
+        self.n = Peer._counter
+        self.session = session
         self.ws = ws
+        self.loop = loop
         self.webrtcbin: Optional[Gst.Element] = None
-        self.pipeline: Optional[Gst.Pipeline] = None
-        self._ice_queue = []
-        self._ready = False
+        self.queues = []
+        self.tee_pads = []  # (tee, pad) pairs to release on teardown
 
-    async def send(self, msg: dict):
+    # -- signalling (called from GStreamer threads) --
+
+    def _send(self, msg: dict):
+        asyncio.run_coroutine_threadsafe(self._async_send(msg), self.loop)
+
+    async def _async_send(self, msg: dict):
         try:
             await self.ws.send(json.dumps(msg))
-        except Exception as e:
-            log.warning(f'[{self.session_id}] send error: {e}')
+        except Exception:
+            pass  # peer going away; teardown happens in ws handler
 
-    async def send_offer(self, sdp: str):
-        await self.send({'type': 'offer', 'sdp': sdp})
+    # -- graph construction (GLib thread only) --
 
-    async def send_ice(self, candidate: str, sdp_mline_index: int):
-        await self.send({
-            'type': 'ice',
-            'candidate': candidate,
-            'sdpMLineIndex': sdp_mline_index
-        })
+    def attach(self):
+        s = self.session
+        pipeline = s.pipeline
+        name = f'peer{self.n}'
 
-
-# ── GStreamer Pipeline ────────────────────────────────────────────────────────
-
-class WolfWebRTCSession:
-    """
-    One GStreamer pipeline per Wolf session.
-    Taps the interpipe buses Wolf published for that session
-    and feeds into webrtcbin.
-    """
-
-    def __init__(self, session_id: str, loop: asyncio.AbstractEventLoop):
-        self.session_id = session_id
-        self.loop = loop
-        self.pipeline: Optional[Gst.Pipeline] = None
-        self.webrtcbin: Optional[Gst.Element] = None
-        self.peers: Dict[str, SignallingPeer] = {}  # ws_id → peer
-        self._lock = threading.Lock()
-        self._running = False
-
-    def start(self):
-        """Build and start the GStreamer pipeline."""
-        sid = self.session_id
-
-        # Wolf encodes to H264/HEVC and publishes on interpipe.
-        # We tap the encoded stream directly — no re-encode needed.
-        # webrtcbin needs RTP-packetised input.
-        #
-        # Video: interpipesrc → h264parse → rtph264pay → webrtcbin
-        # Audio: interpipesrc → opusparse → rtpopuspay → webrtcbin
-        #
-        # Note: Wolf may use HEVC. We try H264 first (wider browser support).
-        # If the session is HEVC-only, the pipeline will error and we log it.
-
-        pipeline_str = f"""
-            interpipesrc
-                name=video_src
-                listen-to={sid}_video
-                is-live=true
-                stream-sync=restart-ts
-                max-bytes=0
-                max-buffers=1
-                leaky-type=downstream
-            ! queue max-size-buffers=5 leaky=downstream
-            ! h264parse
-            ! rtph264pay config-interval=-1 aggregate-mode=zero-latency
-            ! application/x-rtp,media=video,encoding-name=H264,payload=97
-            ! webrtcbin.sink_0
-
-            interpipesrc
-                name=audio_src
-                listen-to={sid}_audio
-                is-live=true
-                stream-sync=restart-ts
-                max-bytes=0
-                max-buffers=3
-                block=false
-            ! queue max-size-buffers=5 leaky=downstream
-            ! opusparse
-            ! rtpopuspay
-            ! application/x-rtp,media=audio,encoding-name=OPUS,payload=96
-            ! webrtcbin.sink_1
-
-            webrtcbin
-                name=webrtcbin
-                bundle-policy=max-bundle
-                stun-server={STUN_SERVER}
-        """
-
-        self.pipeline = Gst.parse_launch(pipeline_str)
-        self.webrtcbin = self.pipeline.get_by_name('webrtcbin')
-
-        if not self.webrtcbin:
-            log.error(f'[{sid}] Failed to get webrtcbin from pipeline')
-            return False
-
-        # Connect webrtcbin signals
+        self.webrtcbin = Gst.ElementFactory.make('webrtcbin', name)
+        self.webrtcbin.set_property('bundle-policy', GstWebRTC.WebRTCBundlePolicy.MAX_BUNDLE)
+        self.webrtcbin.set_property('stun-server', STUN_SERVER)
         self.webrtcbin.connect('on-negotiation-needed', self._on_negotiation_needed)
         self.webrtcbin.connect('on-ice-candidate', self._on_ice_candidate)
+        pipeline.add(self.webrtcbin)
 
-        # Bus message handler
+        for tee in [t for t in (s.video_tee, s.audio_tee) if t is not None]:
+            q = Gst.ElementFactory.make('queue', None)
+            q.set_property('max-size-buffers', 30)
+            q.set_property('leaky', 2)  # downstream — never stall other peers
+            pipeline.add(q)
+            tee_pad = tee.request_pad_simple('src_%u')
+            tee_pad.link(q.get_static_pad('sink'))
+            q.link(self.webrtcbin)
+            q.sync_state_with_parent()
+            self.queues.append(q)
+            self.tee_pads.append((tee, tee_pad))
+
+        self.webrtcbin.sync_state_with_parent()
+        log.info(f'[{s.session_id}] peer{self.n} attached '
+                 f'({len(self.queues)} track(s), total peers: {len(s.peers) + 1})')
+
+    def detach(self):
+        pipeline = self.session.pipeline
+        for tee, pad in self.tee_pads:
+            pad.set_active(False)
+            tee.release_request_pad(pad)
+        for q in self.queues:
+            q.set_state(Gst.State.NULL)
+            pipeline.remove(q)
+        if self.webrtcbin:
+            self.webrtcbin.set_state(Gst.State.NULL)
+            pipeline.remove(self.webrtcbin)
+            self.webrtcbin = None
+        log.info(f'[{self.session.session_id}] peer{self.n} detached')
+
+    # -- webrtcbin callbacks (GStreamer threads) --
+
+    def _on_negotiation_needed(self, element):
+        promise = Gst.Promise.new_with_change_func(self._on_offer_created, element, None)
+        element.emit('create-offer', None, promise)
+
+    def _on_offer_created(self, promise, element, _):
+        promise.wait()
+        reply = promise.get_reply()
+        if reply is None:
+            log.error(f'peer{self.n}: create-offer failed')
+            return
+        offer = reply.get_value('offer')
+        element.emit('set-local-description', offer, None)
+        self._send({'type': 'offer', 'sdp': offer.sdp.as_text()})
+
+    def _on_ice_candidate(self, element, mline_index, candidate):
+        self._send({'type': 'ice', 'candidate': candidate, 'sdpMLineIndex': mline_index})
+
+    # -- browser messages (asyncio thread; graph-safe ops go via glib_call) --
+
+    def handle_answer(self, sdp_str: str):
+        res, sdp = GstSdp.SDPMessage.new_from_text(sdp_str)
+        answer = GstWebRTC.WebRTCSessionDescription.new(GstWebRTC.WebRTCSDPType.ANSWER, sdp)
+        self.webrtcbin.emit('set-remote-description', answer, None)
+
+    def handle_ice(self, candidate: str, mline_index: int):
+        self.webrtcbin.emit('add-ice-candidate', mline_index, candidate)
+
+
+# ── Session ───────────────────────────────────────────────────────────────────
+
+class TapSession:
+    """
+    Ingest pipeline for one Wolf session tap:
+
+      shmsrc(tap_<id>_video) ! gdpdepay ! parsebin ─(by caps)→ rtp payloader ! tee ┐
+      shmsrc(tap_<id>_audio) ! gdpdepay ! opusparse ! rtpopuspay ! tee ────────────┤
+                                                        per-peer: tee ! queue ! webrtcbin
+    """
+
+    def __init__(self, session_id: str, video_sock: str, audio_sock: Optional[str], loop):
+        self.session_id = session_id
+        self.video_sock = video_sock
+        self.audio_sock = audio_sock
+        self.loop = loop
+        self.pipeline: Optional[Gst.Pipeline] = None
+        self.video_tee: Optional[Gst.Element] = None
+        self.audio_tee: Optional[Gst.Element] = None
+        self.peers: Dict[int, Peer] = {}
+        self.video_codec = 'pending'
+        self.video_bytes = 0
+        self.dead = False
+
+    # -- lifecycle (GLib thread) --
+
+    def start(self) -> bool:
+        sid = self.session_id
+        desc = (
+            f'shmsrc socket-path="{self.video_sock}" is-live=true '
+            f'! gdpdepay ! parsebin name=pb_{sid} '
+            # tee needs a permanent drain so it flows with zero peers
+            f'tee name=vtee_{sid} allow-not-linked=true '
+        )
+        if self.audio_sock:
+            desc += (
+                f'shmsrc socket-path="{self.audio_sock}" is-live=true '
+                f'! gdpdepay ! opusparse ! rtpopuspay pt=96 '
+                f'! application/x-rtp,media=audio,encoding-name=OPUS,payload=96 '
+                f'! tee name=atee_{sid} allow-not-linked=true '
+            )
+
+        try:
+            self.pipeline = Gst.parse_launch(desc)
+        except GLib.Error as e:
+            log.error(f'[{sid}] pipeline parse failed: {e}')
+            return False
+
+        self.video_tee = self.pipeline.get_by_name(f'vtee_{sid}')
+        self.audio_tee = self.pipeline.get_by_name(f'atee_{sid}') if self.audio_sock else None
+
+        parsebin = self.pipeline.get_by_name(f'pb_{sid}')
+        parsebin.connect('pad-added', self._on_parse_pad)
+
         bus = self.pipeline.get_bus()
         bus.add_signal_watch()
         bus.connect('message', self._on_bus_message)
 
-        ret = self.pipeline.set_state(Gst.State.PLAYING)
-        if ret == Gst.StateChangeReturn.FAILURE:
-            log.error(f'[{sid}] Pipeline failed to start')
+        if self.pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
+            log.error(f'[{sid}] pipeline failed to start')
             return False
 
-        self._running = True
-        log.info(f'[{sid}] Pipeline started — tapping interpipes {sid}_video / {sid}_audio')
+        log.info(f'[{sid}] ingest started (video={os.path.basename(self.video_sock)}'
+                 f'{", audio" if self.audio_sock else ", no audio tap"})')
         return True
 
-    def stop(self):
-        if self.pipeline:
-            self.pipeline.set_state(Gst.State.NULL)
-            self._running = False
-            log.info(f'[{self.session_id}] Pipeline stopped')
+    def _on_parse_pad(self, parsebin, pad):
+        """Link the right RTP payloader for whatever codec Wolf negotiated."""
+        caps = pad.get_current_caps() or pad.query_caps(None)
+        name = caps.get_structure(0).get_name() if caps.get_size() else '?'
+        sid = self.session_id
 
-    def add_peer(self, peer: SignallingPeer):
-        """Add a new browser peer to this session's webrtcbin."""
-        with self._lock:
-            self.peers[id(peer.ws)] = peer
-            peer.webrtcbin = self.webrtcbin
-            peer.pipeline = self.pipeline
-        log.info(f'[{self.session_id}] Peer connected (total: {len(self.peers)})')
+        if name == 'video/x-h264':
+            chain = ('h264parse config-interval=-1 ! rtph264pay pt=97 '
+                     'config-interval=-1 aggregate-mode=zero-latency '
+                     '! application/x-rtp,media=video,encoding-name=H264,payload=97')
+            self.video_codec = 'H264'
+        elif name == 'video/x-h265':
+            chain = ('h265parse config-interval=-1 ! rtph265pay pt=98 config-interval=-1 '
+                     '! application/x-rtp,media=video,encoding-name=H265,payload=98')
+            self.video_codec = 'H265'
+            log.warning(f'[{sid}] HEVC session — most browsers cannot decode this; '
+                        f'prefer H264 in the Moonlight client for co-viewing')
+        else:
+            self.video_codec = f'unsupported:{name}'
+            log.error(f'[{sid}] unsupported tapped codec {name} (AV1 co-view not implemented); '
+                      f'set the Moonlight client to H264')
+            return
 
-    def remove_peer(self, peer: SignallingPeer):
-        with self._lock:
-            self.peers.pop(id(peer.ws), None)
-        log.info(f'[{self.session_id}] Peer disconnected (remaining: {len(self.peers)})')
+        payl = Gst.parse_bin_from_description(chain, True)
+        self.pipeline.add(payl)
+        payl.sync_state_with_parent()
+        pad.link(payl.get_static_pad('sink'))
+        payl.link(self.video_tee)
 
-    # ── GStreamer callbacks ───────────────────────────────────────────────────
+        # count ingest bytes for /status
+        payl.get_static_pad('src').add_probe(Gst.PadProbeType.BUFFER, self._count_probe)
+        log.info(f'[{sid}] video codec {self.video_codec} → RTP ready')
 
-    def _on_negotiation_needed(self, element):
-        """Called when webrtcbin is ready to create an offer."""
-        promise = Gst.Promise.new_with_change_func(self._on_offer_created, element, None)
-        element.emit('create-offer', None, promise)
-
-    def _on_offer_created(self, promise, element, user_data):
-        promise.wait()
-        reply = promise.get_reply()
-        offer = reply.get_value('offer')
-        element.emit('set-local-description', offer, None)
-
-        sdp_text = offer.sdp.as_text()
-        log.debug(f'[{self.session_id}] Offer created, sending to {len(self.peers)} peers')
-
-        # Send offer to all connected peers
-        asyncio.run_coroutine_threadsafe(
-            self._broadcast_offer(sdp_text),
-            self.loop
-        )
-
-    async def _broadcast_offer(self, sdp: str):
-        with self._lock:
-            peers = list(self.peers.values())
-        for peer in peers:
-            await peer.send_offer(sdp)
-
-    def _on_ice_candidate(self, element, mline_index, candidate):
-        asyncio.run_coroutine_threadsafe(
-            self._broadcast_ice(candidate, mline_index),
-            self.loop
-        )
-
-    async def _broadcast_ice(self, candidate: str, mline_index: int):
-        with self._lock:
-            peers = list(self.peers.values())
-        for peer in peers:
-            await peer.send_ice(candidate, mline_index)
+    def _count_probe(self, pad, info):
+        buf = info.get_buffer()
+        if buf:
+            self.video_bytes += buf.get_size()
+        return Gst.PadProbeReturn.OK
 
     def _on_bus_message(self, bus, message):
-        t = message.type
-        if t == Gst.MessageType.ERROR:
-            err, debug = message.parse_error()
-            log.error(f'[{self.session_id}] GStreamer error: {err.message} | {debug}')
-            # Interpipe source will error if no Wolf session is active yet —
-            # this is expected when waiting for Wolf to start a stream.
-        elif t == Gst.MessageType.WARNING:
-            warn, debug = message.parse_warning()
-            log.warning(f'[{self.session_id}] GStreamer warning: {warn.message}')
-        elif t == Gst.MessageType.STATE_CHANGED:
-            if message.src == self.pipeline:
-                old, new, _ = message.parse_state_changed()
-                log.debug(f'[{self.session_id}] Pipeline state: {old.value_nick} → {new.value_nick}')
+        if message.type == Gst.MessageType.ERROR:
+            err, dbg = message.parse_error()
+            log.error(f'[{self.session_id}] GStreamer: {err.message}')
+            # shmsrc errors when Wolf tears the session down — mark dead so the
+            # scanner reaps us (and re-creates if the socket comes back).
+            self.dead = True
 
-    def handle_answer(self, sdp_str: str):
-        """Apply an SDP answer received from a browser peer."""
-        _, sdp = GstSdp.SDPMessage.new_from_text(sdp_str)
-        answer = GstWebRTC.WebRTCSessionDescription.new(
-            GstWebRTC.WebRTCSDPType.ANSWER, sdp
-        )
-        self.webrtcbin.emit('set-remote-description', answer, None)
+    def stop(self):
+        for peer in list(self.peers.values()):
+            peer.detach()
+        self.peers.clear()
+        if self.pipeline:
+            self.pipeline.set_state(Gst.State.NULL)
+            self.pipeline = None
+        log.info(f'[{self.session_id}] ingest stopped')
 
-    def handle_ice(self, candidate: str, sdp_mline_index: int):
-        """Add an ICE candidate received from a browser peer."""
-        self.webrtcbin.emit('add-ice-candidate', sdp_mline_index, candidate)
+    # -- peers (called from asyncio via glib_call) --
+
+    def add_peer(self, peer: Peer):
+        peer.attach()
+        self.peers[peer.n] = peer
+
+    def remove_peer(self, peer: Peer):
+        if peer.n in self.peers:
+            del self.peers[peer.n]
+            peer.detach()
 
 
-# ── Session Manager ───────────────────────────────────────────────────────────
+# ── Session registry / tap scanner ────────────────────────────────────────────
 
 class SessionManager:
-    def __init__(self, loop: asyncio.AbstractEventLoop):
+    def __init__(self, loop):
         self.loop = loop
-        self.sessions: Dict[str, WolfWebRTCSession] = {}
+        self.sessions: Dict[str, TapSession] = {}
 
-    def get_or_create(self, session_id: str) -> WolfWebRTCSession:
-        if session_id not in self.sessions:
-            session = WolfWebRTCSession(session_id, self.loop)
-            if session.start():
-                self.sessions[session_id] = session
-                log.info(f'Session created: {session_id}')
-            else:
-                log.error(f'Failed to start session: {session_id}')
-        return self.sessions.get(session_id)
+    def scan_once(self):
+        """Discover tap sockets; start new sessions, reap dead/vanished ones."""
+        found = {}
+        try:
+            for entry in os.scandir(TAP_DIR):
+                m = TAP_VIDEO_RE.match(entry.name)
+                if m:
+                    sid = m.group(1)
+                    audio = os.path.join(TAP_DIR, f'tap_{sid}_audio')
+                    found[sid] = (entry.path, audio if os.path.exists(audio) else None)
+        except FileNotFoundError:
+            log.warning(f'TAP_DIR {TAP_DIR} missing — is /tmp/sockets mounted?')
+            return
 
-    def list_sessions(self):
-        return list(self.sessions.keys())
+        for sid, (vsock, asock) in found.items():
+            if sid not in self.sessions:
+                session = TapSession(sid, vsock, asock, self.loop)
+                if glib_call(session.start).result(timeout=10):
+                    self.sessions[sid] = session
+                else:
+                    glib_call(session.stop).result(timeout=10)
+
+        for sid in list(self.sessions):
+            sess = self.sessions[sid]
+            if sid not in found or sess.dead:
+                reason = 'tap vanished' if sid not in found else 'pipeline died'
+                log.info(f'[{sid}] reaping session ({reason})')
+                for peer in list(sess.peers.values()):
+                    asyncio.run_coroutine_threadsafe(
+                        peer.ws.close(1001, 'session ended'), self.loop)
+                glib_call(sess.stop).result(timeout=10)
+                del self.sessions[sid]
+
+    async def scan_loop(self):
+        while True:
+            try:
+                self.scan_once()
+            except Exception as e:  # noqa: BLE001 — scanner must survive anything
+                log.error(f'tap scan error: {e}')
+            await asyncio.sleep(SCAN_SECS)
+
+    def status(self):
+        return {
+            sid: {
+                'video_codec': s.video_codec,
+                'video_bytes': s.video_bytes,
+                'receiving': s.video_bytes > 0,
+                'peers': len(s.peers),
+                'audio': s.audio_sock is not None,
+            }
+            for sid, s in self.sessions.items()
+        }
 
     def stop_all(self):
-        for session in self.sessions.values():
-            session.stop()
+        for s in self.sessions.values():
+            glib_call(s.stop).result(timeout=10)
         self.sessions.clear()
 
 
-# ── WebSocket Signalling Server ───────────────────────────────────────────────
+# ── WebSocket signalling ──────────────────────────────────────────────────────
 
 async def ws_handler(websocket, manager: SessionManager):
-    """
-    WebSocket URL: ws://<host>:8089/<session_id>
-    Each browser connects here to receive offer + exchange ICE candidates.
-    """
-    path = websocket.request.path.lstrip('/')
-    session_id = path or None
-
+    session_id = websocket.request.path.lstrip('/') or None
     if not session_id:
         await websocket.close(1008, 'Missing session_id in path')
         return
 
-    log.info(f'WS connection for session {session_id}')
-
-    session = manager.get_or_create(session_id)
+    session = manager.sessions.get(session_id)
     if not session:
-        await websocket.close(1011, f'Could not start session {session_id}')
+        await websocket.close(1011, f'No active tap for session {session_id}')
         return
 
-    peer = SignallingPeer(session_id, websocket)
-    session.add_peer(peer)
+    peer = Peer(session, websocket, asyncio.get_running_loop())
+    glib_call(session.add_peer, peer).result(timeout=10)
+    warned_input = False
 
     try:
         async for raw in websocket:
@@ -331,77 +420,57 @@ async def ws_handler(websocket, manager: SessionManager):
                 msg = json.loads(raw)
             except json.JSONDecodeError:
                 continue
-
-            msg_type = msg.get('type')
-
-            if msg_type == 'answer':
-                log.info(f'[{session_id}] Got answer from browser')
-                session.handle_answer(msg['sdp'])
-
-            elif msg_type == 'ice':
-                session.handle_ice(msg['candidate'], msg.get('sdpMLineIndex', 0))
-
-            elif msg_type == 'ping':
-                await peer.send({'type': 'pong'})
-
+            t = msg.get('type')
+            if t == 'answer':
+                peer.handle_answer(msg['sdp'])
+            elif t == 'ice' and msg.get('candidate'):
+                peer.handle_ice(msg['candidate'], msg.get('sdpMLineIndex', 0))
+            elif t == 'ping':
+                await websocket.send(json.dumps({'type': 'pong'}))
+            elif t == 'input' and not warned_input:
+                warned_input = True
+                await websocket.send(json.dumps(
+                    {'type': 'info', 'msg': 'co-view is view-only; use Moonlight for input'}))
     except websockets.exceptions.ConnectionClosed:
         pass
     finally:
-        session.remove_peer(peer)
+        glib_call(session.remove_peer, peer).result(timeout=10)
 
 
-# ── HTTP Server (session list + static client) ────────────────────────────────
+# ── HTTP ──────────────────────────────────────────────────────────────────────
 
 def get_wolf_pin():
-    """Read Wolf container logs via Docker SDK and return the latest PIN URL as JSON."""
+    """Latest Moonlight pairing PIN URL from the wolf container's logs."""
     try:
-        import docker, re
+        import docker
         client = docker.from_env()
-        logs = client.containers.get('wolf').logs(tail=50).decode('utf-8', errors='ignore')
+        logs = client.containers.get('wolf').logs(tail=400).decode('utf-8', errors='ignore')
         matches = re.findall(r'http://[^\s]+/pin/#[0-9A-Fa-f]+', logs)
         if matches:
             return json.dumps({'pin_url': matches[-1], 'found': True})
         return json.dumps({'pin_url': None, 'found': False})
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — endpoint must always answer
         return json.dumps({'pin_url': None, 'found': False, 'error': str(e)})
 
 
 def make_http_handler(manager: SessionManager, client_dir: str):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            parsed = urlparse(self.path)
-            path = parsed.path.rstrip('/')
-
-            if path == '' or path == '/':
-                # Session list as JSON
-                sessions = manager.list_sessions()
-                body = json.dumps({
-                    'sessions': sessions,
-                    'ws_port': WS_PORT
-                }).encode()
+            path = urlparse(self.path).path.rstrip('/')
+            if path == '':
+                body = json.dumps({'sessions': list(manager.sessions.keys()),
+                                   'ws_port': WS_PORT}).encode()
                 self._respond(200, 'application/json', body)
-
-            elif path == '/client' or path == '/client/index.html':
-                html_path = os.path.join(client_dir, 'index.html')
-                try:
-                    with open(html_path, 'rb') as f:
-                        self._respond(200, 'text/html', f.read())
-                except FileNotFoundError:
-                    self._respond(404, 'text/plain', b'Not found')
-
+            elif path == '/status':
+                self._respond(200, 'application/json', json.dumps(manager.status()).encode())
             elif path == '/wolf-pin':
-                body = get_wolf_pin().encode()
-                self._respond(200, 'application/json', body)
-
-            elif path.startswith('/session/'):
-                # /session/<id> → serve browser client
-                html_path = os.path.join(client_dir, 'index.html')
+                self._respond(200, 'application/json', get_wolf_pin().encode())
+            elif path in ('/client', '/client/index.html') or path.startswith('/session/'):
                 try:
-                    with open(html_path, 'rb') as f:
+                    with open(os.path.join(client_dir, 'index.html'), 'rb') as f:
                         self._respond(200, 'text/html', f.read())
                 except FileNotFoundError:
                     self._respond(404, 'text/plain', b'Not found')
-
             else:
                 self._respond(404, 'text/plain', b'Not found')
 
@@ -414,7 +483,7 @@ def make_http_handler(manager: SessionManager, client_dir: str):
             self.wfile.write(body)
 
         def log_message(self, fmt, *args):
-            pass  # suppress default access log
+            pass
 
     return Handler
 
@@ -425,47 +494,34 @@ async def main():
     loop = asyncio.get_running_loop()
     manager = SessionManager(loop)
 
-    # Pre-start sessions for any manually configured IDs
-    for sid in MANUAL_SESSION_IDS:
-        log.info(f'Pre-starting session from WOLF_SESSION_IDS: {sid}')
-        manager.get_or_create(sid)
+    client_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'client'))
 
-    client_dir = os.path.join(os.path.dirname(__file__), '..', 'client')
-    client_dir = os.path.abspath(client_dir)
-
-    # HTTP server in a thread
-    http_handler = make_http_handler(manager, client_dir)
-    http_server = HTTPServer(('0.0.0.0', HTTP_PORT), http_handler)
-    http_thread = threading.Thread(target=http_server.serve_forever, daemon=True)
-    http_thread.start()
+    http_server = ThreadingHTTPServer(('0.0.0.0', HTTP_PORT),
+                                      make_http_handler(manager, client_dir))
+    threading.Thread(target=http_server.serve_forever, daemon=True).start()
     log.info(f'HTTP server on :{HTTP_PORT}')
 
-    # GLib main loop for GStreamer (in a thread)
-    glib_loop = GLib.MainLoop()
-    glib_thread = threading.Thread(target=glib_loop.run, daemon=True)
-    glib_thread.start()
+    threading.Thread(target=_glib_loop.run, daemon=True).start()
 
-    # WebSocket signalling server
-    log.info(f'WebSocket signalling on :{WS_PORT}')
+    scanner = asyncio.create_task(manager.scan_loop())
+
     async with websockets.server.serve(
-        lambda ws: ws_handler(ws, manager),
-        '0.0.0.0',
-        WS_PORT
+        lambda ws: ws_handler(ws, manager), '0.0.0.0', WS_PORT
     ):
-        log.info(f'Wolf WebRTC Sidecar ready')
-        log.info(f'  HTTP:      http://0.0.0.0:{HTTP_PORT}/')
+        log.info('Wolf WebRTC Sidecar ready (shm tap mode)')
+        log.info(f'  tap dir:   {TAP_DIR}/tap_<session>_video|_audio')
+        log.info(f'  HTTP:      http://0.0.0.0:{HTTP_PORT}/  (/status, /wolf-pin, /client)')
         log.info(f'  WebSocket: ws://0.0.0.0:{WS_PORT}/<session_id>')
-        log.info(f'  Client:    http://0.0.0.0:{HTTP_PORT}/client')
 
-        # Keep running until interrupted
         stop = loop.create_future()
         loop.add_signal_handler(signal.SIGINT,  stop.set_result, None)
         loop.add_signal_handler(signal.SIGTERM, stop.set_result, None)
         await stop
 
+    scanner.cancel()
     manager.stop_all()
     http_server.shutdown()
-    glib_loop.quit()
+    _glib_loop.quit()
     log.info('Sidecar stopped')
 
 

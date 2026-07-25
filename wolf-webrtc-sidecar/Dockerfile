@@ -1,32 +1,6 @@
-# ── Stage 1: build gst-interpipe from source ─────────────────────────────────
-FROM ubuntu:24.04 AS interpipe-builder
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    autoconf \
-    automake \
-    libtool \
-    pkg-config \
-    gtk-doc-tools \
-    make \
-    gcc \
-    libgstreamer1.0-dev \
-    libgstreamer-plugins-base1.0-dev \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# Clone and build gst-interpipe
-RUN git clone --depth=1 https://github.com/RidgeRun/gst-interpipe.git /build/gst-interpipe
-
-WORKDIR /build/gst-interpipe
-
-RUN ./autogen.sh --libdir /usr/lib/$(uname -m)-linux-gnu/ \
-    && make -j$(nproc) \
-    && make install DESTDIR=/interpipe-out
-
-# ── Stage 2: runtime image ────────────────────────────────────────────────────
+# Media arrives from Wolf through shmsink sockets in /tmp/sockets (see
+# apply-wolf-tap.sh), so no gst-interpipe build is needed — interpipe only
+# links pipelines inside a single process and never worked across containers.
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -51,18 +25,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gstreamer1.0-vaapi \
     libva-drm2 \
     libva2 \
-    # runtime deps for gst-interpipe
     libgstreamer1.0-0 \
     libgstreamer-plugins-base1.0-0 \
-    && pip3 install --break-system-packages websockets docker \
+    && pip3 install --break-system-packages 'websockets>=14,<16' 'docker>=7,<8' \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
-
-# Copy built interpipe plugin from builder stage
-COPY --from=interpipe-builder /interpipe-out/ /
-
-# Refresh shared library cache
-RUN ldconfig
 
 WORKDIR /app
 

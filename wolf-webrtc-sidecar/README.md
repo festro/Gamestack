@@ -1,117 +1,90 @@
 # wolf-webrtc-sidecar
 
-Browser streaming sidecar for Wolf. Taps Wolf's GStreamer interpipe output
-and re-streams to any browser via WebRTC. Zero changes to Wolf or AMP required.
+Watch a running Wolf session in a browser — no Moonlight client needed.
+**View-only:** the stream is one-way. Input still goes through Moonlight.
 
-## Architecture
+## Why v2 exists
+
+v1 tried to read Wolf's video with `interpipesrc listen-to={session_id}_video`
+from its own container. That can never work: `gst-interpipe` links pipelines
+inside a single process, so the sidecar's pipeline went `PLAYING` and then sat
+there receiving nothing — a black screen with no error in the log.
+
+v2 has Wolf hand the data over explicitly. `apply-wolf-tap.sh` patches Wolf's
+`config.toml` so each session's sink pipeline `tee`s the already-encoded frames
+into an `shmsink` socket in `/tmp/sockets`, a directory both containers already
+bind-mount. The sidecar picks those up with `shmsrc`.
 
 ```
-Wolf (GStreamer)
-  └─ interpipe bus: {session_id}_video / {session_id}_audio
-       └─ wolf-webrtc sidecar
-            ├─ GStreamer: interpipesrc → h264parse → rtph264pay → webrtcbin
-            ├─ WebSocket signalling server (:8089)
-            └─ HTTP server (:8088)
-                 └─ Browser client (HTML/JS WebRTC peer)
+Wolf (host net)                                    sidecar (host net)
+  encoder ─ tee ─ rtpmoonlightpay ─ appsink → Moonlight client (unchanged)
+              └── queue(leaky) ─ gdppay ─ shmsink
+                                    /tmp/sockets/tap_<session>_video
+                                                  └─ shmsrc ─ gdpdepay ─ parsebin
+                                                       ─ rtp payloader ─ tee
+                                                            ├─ queue ─ webrtcbin → browser 1
+                                                            └─ queue ─ webrtcbin → browser 2
 ```
 
-Wolf and Moonlight continue to work exactly as before. The sidecar is a
-completely separate container that only reads from the interpipe bus.
-Remove it any time with no impact on Wolf.
+No re-encoding happens: frames are copied post-encoder, so the cost is a memcpy
+per frame. Both tap branches are `leaky=downstream` with `allow-not-linked`, so
+a stopped, slow, or crashed sidecar cannot stall Wolf's Moonlight path.
 
-## Quick Start
-
-### 1. Find your Wolf session ID
-
-Session IDs are the numeric folder names under `wolf-config/cfg/`:
+## Setup
 
 ```bash
-ls ~/gamestack/wolf-config/cfg/
-# → <session_id>  4161966709011769559
+bash wolf-webrtc-sidecar/apply-wolf-tap.sh   # backs up config.toml, then patches
+docker restart wolf
 ```
 
-Or check your `config.toml` — they're the `app_state_folder` values under
-`[[paired_clients]]`.
+Then start a session from Moonlight as usual and open `http://<host-ip>:8088/client`.
+Sessions appear within ~2s of the tap socket showing up.
 
-### 2. Add to docker-compose.yml
+- `--check` — report whether the tap is applied
+- `--revert` — restore the pre-tap backup
+- Wolf upgrades that rewrite `config.toml` drop the tap; re-run the script.
 
-Paste the contents of `docker-compose.sidecar.yml` into your main
-`docker-compose.yml` under `services:`.
+## Endpoints
 
-Optionally set `WOLF_SESSION_IDS` in your `.env` file to pre-start sessions:
+| Path | Purpose |
+|---|---|
+| `GET /` | active session IDs + WS port |
+| `GET /status` | per-session codec, bytes ingested, peer count |
+| `GET /wolf-pin` | latest Moonlight pairing PIN URL, scraped from Wolf's logs |
+| `GET /client` | browser client |
+| `ws://<host-ip>:8089/<session_id>` | signalling (offer/answer/ICE) |
 
-```bash
-# .env
-WOLF_SESSION_IDS=<session_id>,4161966709011769559
-```
-
-### 3. Start the sidecar
-
-```bash
-cd ~/gamestack
-docker compose up -d wolf-webrtc
-```
-
-### 4. Open in browser
-
-Navigate to `http://<host-ip>:8088/client` from any browser on the network.
-
-- Enter the sidecar host IP (pre-filled from page URL)
-- Enter the session ID, or click one from the auto-detected list
-- Click Connect
-
-A Wolf session must be active (app launched via Moonlight) for the stream
-to appear. The sidecar will connect to the interpipe bus once Wolf starts
-publishing the session.
-
-### Direct session URL
-
-```
-http://<host-ip>:8088/session/<session_id>
-```
-
-Auto-connects to that session on load.
+`/status` is the first thing to check when a stream looks dead: `receiving:
+false` means Wolf isn't writing to the tap (session not started, or the config
+patch is missing), while `receiving: true` with `peers: 0` means the ingest
+works and the problem is on the browser side.
 
 ## Controls
 
-| Key / Action        | Effect                        |
-|---------------------|-------------------------------|
-| Click video         | Capture keyboard + mouse input |
-| Esc                 | Disconnect and return to menu |
-| F2                  | Toggle stats HUD (fps, RTT, RX) |
-| Mouse (pointer lock)| Forwarded to Wolf session     |
+| Key / Action | Effect |
+|---|---|
+| Esc | Disconnect and return to menu |
+| F2 | Toggle stats HUD (fps, RTT, RX) |
+| Click video | Reminder that the stream is view-only |
 
-## Ports
+## Limits
 
-| Port | Protocol | Purpose                    |
-|------|----------|----------------------------|
-| 8088 | HTTP     | Session list + browser client |
-| 8089 | WebSocket| WebRTC signalling          |
-
-## Notes
-
-- **H264 only (Phase 1):** The sidecar taps the H264 stream. If Wolf selects
-  HEVC for a session, the pipeline will error. HEVC browser support via WebRTC
-  is limited — H264 is the safe default. To force Wolf to use H264, you can
-  comment out the `[[gstreamer.video.hevc_encoders]]` blocks in `config.toml`.
-
-- **Input forwarding (Phase 2):** Keyboard and mouse events are captured in the
-  browser and sent back over the WebSocket. Server-side forwarding to Wolf's
-  inputtino socket (`/var/run/wolf/wolf.sock`) is the next step — the sidecar
-  currently receives input events but does not yet inject them.
-
-- **Multi-peer:** Multiple browsers can connect to the same session ID
-  simultaneously. Each gets its own WebRTC connection. webrtcbin re-encodes
-  per peer (no shared encoding yet).
-
-- **STUN:** Uses Google's public STUN server by default. For LAN-only use
-  this is fine. For WAN access set `STUN_SERVER` in your `.env` and consider
-  adding a TURN server.
+- **View-only.** Wolf takes input over Moonlight's encrypted control channel;
+  a browser can't join it. Clicking the video says so.
+- **H264 only in practice.** HEVC taps stream but most browsers can't decode
+  them; AV1 isn't wired up. Set the Moonlight client to H264 for co-viewing.
+- **Late joiners wait for the next IDR frame** — up to a few seconds of black
+  before the picture appears.
+- **A session exists only while Moonlight is connected.** The tap socket
+  disappears with the session and the sidecar reaps it.
+- **STUN:** Google's public STUN by default — fine for LAN. WAN access needs a
+  TURN server (`STUN_SERVER` is configurable; TURN is not wired up).
+- Signalling is unauthenticated: anyone on the LAN who can reach :8089 and
+  guess a session ID can watch. Don't expose these ports to the internet.
 
 ## Roadmap
 
-- [ ] Input forwarding → Wolf inputtino socket
-- [ ] HEVC support (Safari, some mobile browsers)
-- [ ] Auto-discover active Wolf sessions via wolf.sock API
-- [ ] TURN server support for WAN relay
 - [ ] Per-session auth token
+- [ ] AV1 co-view (browser support is arriving)
+- [ ] TURN support for WAN relay
+- [ ] Force-IDR on peer join, to kill the late-join black screen
