@@ -60,7 +60,9 @@ gi.require_version('GstSdp', '1.0')
 from gi.repository import Gst, GLib, GstWebRTC, GstSdp
 
 import websockets
-import websockets.server
+# The modern asyncio server: websockets.server.serve is the legacy API, whose
+# handler exposes .path instead of .request.path and is deprecated in 14+.
+import websockets.asyncio.server
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
@@ -81,7 +83,8 @@ STUN_SERVER = os.environ.get('STUN_SERVER', 'stun://stun.l.google.com:19302')
 TAP_DIR     = os.environ.get('TAP_DIR', '/tmp/sockets')
 SCAN_SECS   = float(os.environ.get('TAP_SCAN_SECS', '2'))
 
-TAP_VIDEO_RE = re.compile(r'^tap_(.+)_video$')
+rgw = r'(?:\.\d+)?'  # shmsink appends .0/.1 when its socket path is taken
+TAP_RE = re.compile(rf'^tap_(.+?)_(video|audio){rgw}$')
 
 Gst.init(None)
 
@@ -230,6 +233,7 @@ class TapSession:
         self.video_codec = 'pending'
         self.video_bytes = 0
         self.dead = False
+        self.started = False
 
     # -- lifecycle (GLib thread) --
 
@@ -268,11 +272,47 @@ class TapSession:
         bus.connect('message', self._on_bus_message)
 
         if self.pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
-            log.error(f'[{sid}] pipeline failed to start')
+            log.debug(f'[{sid}] pipeline failed to start')  # caller reports once
             return False
 
+        self.started = True
         log.info(f'[{sid}] ingest started (video={os.path.basename(self.video_sock)}'
                  f'{", audio" if self.audio_sock else ", no audio tap"})')
+        return True
+
+    def add_audio(self, audio_sock: str) -> bool:
+        """
+        Attach an audio tap to a session that started video-only.
+
+        Wolf runs its audio and video sink pipelines independently, so the audio
+        socket can show up after we are already ingesting video. Viewers already
+        connected keep the video-only stream they negotiated; new ones get both.
+        """
+        if self.audio_sock or not self.pipeline:
+            return False
+
+        src = Gst.ElementFactory.make('shmsrc')
+        demux = Gst.ElementFactory.make('tsdemux')
+        tee = Gst.ElementFactory.make('tee')
+        if not all((src, demux, tee)):
+            log.error(f'[{self.session_id}] could not create audio tap elements')
+            return False
+
+        src.set_property('socket-path', audio_sock)
+        src.set_property('is-live', True)
+        src.set_property('do-timestamp', True)
+        tee.set_property('allow-not-linked', True)
+
+        for el in (src, demux, tee):
+            self.pipeline.add(el)
+        src.link(demux)
+        demux.connect('pad-added', self._on_demux_pad)
+        self.audio_tee = tee
+        for el in (src, demux, tee):
+            el.sync_state_with_parent()
+
+        self.audio_sock = audio_sock
+        log.info(f'[{self.session_id}] audio tap attached')
         return True
 
     def _on_demux_pad(self, demux, pad):
@@ -281,22 +321,22 @@ class TapSession:
         name = caps.get_structure(0).get_name() if caps.get_size() else '?'
         sid = self.session_id
 
+        # No trailing capsfilters: the payloaders already advertise
+        # media/encoding-name/payload from their pt property, and a description
+        # *ending* in caps makes parse read "application/x-rtp" as a URI scheme.
         if name == 'video/x-h264':
             chain = ('h264parse config-interval=-1 ! rtph264pay pt=97 '
-                     'config-interval=-1 aggregate-mode=zero-latency '
-                     '! application/x-rtp,media=video,encoding-name=H264,payload=97')
+                     'config-interval=-1 aggregate-mode=zero-latency')
             target, is_video = self.video_tee, True
             self.video_codec = 'H264'
         elif name == 'video/x-h265':
-            chain = ('h265parse config-interval=-1 ! rtph265pay pt=98 config-interval=-1 '
-                     '! application/x-rtp,media=video,encoding-name=H265,payload=98')
+            chain = 'h265parse config-interval=-1 ! rtph265pay pt=98 config-interval=-1'
             target, is_video = self.video_tee, True
             self.video_codec = 'H265'
             log.warning(f'[{sid}] HEVC session — most browsers cannot decode this; '
                         f'prefer H264 in the Moonlight client for co-viewing')
         elif name == 'audio/x-opus':
-            chain = ('opusparse ! rtpopuspay pt=96 '
-                     '! application/x-rtp,media=audio,encoding-name=OPUS,payload=96')
+            chain = 'opusparse ! rtpopuspay pt=96'
             target, is_video = self.audio_tee, False
         elif name.startswith('video/'):
             self.video_codec = f'unsupported:{name}'
@@ -343,7 +383,9 @@ class TapSession:
         if self.pipeline:
             self.pipeline.set_state(Gst.State.NULL)
             self.pipeline = None
-        log.info(f'[{self.session_id}] ingest stopped')
+        if self.started:  # silent when start() never got the pipeline running
+            log.info(f'[{self.session_id}] ingest stopped')
+            self.started = False
 
     # -- peers (called from asyncio via glib_call) --
 
@@ -363,28 +405,72 @@ class SessionManager:
     def __init__(self, loop):
         self.loop = loop
         self.sessions: Dict[str, TapSession] = {}
+        self.failures: Dict[str, int] = {}
+        # Socket files outlive the session that made them, so a dead tap would
+        # otherwise be retried every scan forever. path → mtime we gave up on.
+        self.stale: Dict[str, float] = {}
+
+    def discover(self):
+        """
+        Map session_id → (video_socket, audio_socket|None).
+
+        A crashed session leaves its socket file behind, and shmsink will not
+        reuse a taken path — it creates tap_<id>_video.0 instead. The stale
+        file refuses connections forever, so always take the newest socket.
+        """
+        newest: Dict[str, Dict[str, tuple]] = {}
+        try:
+            entries = list(os.scandir(TAP_DIR))
+        except FileNotFoundError:
+            log.warning(f'TAP_DIR {TAP_DIR} missing — is /tmp/sockets mounted?')
+            return {}
+
+        for entry in entries:
+            m = TAP_RE.match(entry.name)
+            if not m:
+                continue
+            sid, kind = m.group(1), m.group(2)
+            try:
+                mtime = entry.stat().st_mtime
+            except OSError:
+                continue
+            if self.stale.get(entry.path) == mtime:
+                continue  # known-dead; Wolf recreating it changes the mtime
+            slot = newest.setdefault(sid, {})
+            if kind not in slot or mtime > slot[kind][0]:
+                slot[kind] = (mtime, entry.path)
+
+        return {
+            sid: (kinds['video'][1], kinds['audio'][1] if 'audio' in kinds else None)
+            for sid, kinds in newest.items() if 'video' in kinds
+        }
 
     def scan_once(self):
         """Discover tap sockets; start new sessions, reap dead/vanished ones."""
-        found = {}
-        try:
-            for entry in os.scandir(TAP_DIR):
-                m = TAP_VIDEO_RE.match(entry.name)
-                if m:
-                    sid = m.group(1)
-                    audio = os.path.join(TAP_DIR, f'tap_{sid}_audio')
-                    found[sid] = (entry.path, audio if os.path.exists(audio) else None)
-        except FileNotFoundError:
-            log.warning(f'TAP_DIR {TAP_DIR} missing — is /tmp/sockets mounted?')
-            return
+        found = self.discover()
 
         for sid, (vsock, asock) in found.items():
             if sid not in self.sessions:
                 session = TapSession(sid, vsock, asock, self.loop)
                 if glib_call(session.start).result(timeout=10):
                     self.sessions[sid] = session
+                    self.failures.pop(sid, None)
                 else:
                     glib_call(session.stop).result(timeout=10)
+                    # Retried every scan; say so once rather than every 2s.
+                    n = self.failures.get(sid, 0) + 1
+                    self.failures[sid] = n
+                    if n == 1:
+                        log.error(f'[{sid}] tap present but unreadable — retrying')
+                    elif n >= 3:
+                        try:
+                            self.stale[vsock] = os.stat(vsock).st_mtime
+                            log.info(f'[{sid}] tap looks stale; ignoring until Wolf remakes it')
+                        except OSError:
+                            pass
+                        self.failures.pop(sid, None)
+            elif asock and not self.sessions[sid].audio_sock:
+                glib_call(self.sessions[sid].add_audio, asock).result(timeout=10)
 
         for sid in list(self.sessions):
             sess = self.sessions[sid]
@@ -531,7 +617,7 @@ async def main():
 
     scanner = asyncio.create_task(manager.scan_loop())
 
-    async with websockets.server.serve(
+    async with websockets.asyncio.server.serve(
         lambda ws: ws_handler(ws, manager), '0.0.0.0', WS_PORT
     ):
         log.info('Wolf WebRTC Sidecar ready (shm tap mode)')
