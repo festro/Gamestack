@@ -45,7 +45,11 @@ services:
       - XDG_RUNTIME_DIR=/tmp/sockets
       - GOW_RUNTIME_DIR=/tmp/sockets
       - HOST_APPS_STATE_FOLDER=/etc/wolf
-      - PULSE_SERVER=unix:/tmp/sockets/pulse-socket
+      # Plain path, no unix: prefix — Wolf reuses this value verbatim as the
+      # container-side path when bind-mounting the socket into app containers,
+      # and "unix:/tmp/..." makes Docker reject the spec, so no app ever starts:
+      #   invalid volume specification: '/tmp/sockets/pulse-socket:unix:/tmp/...'
+      - PULSE_SERVER=/tmp/sockets/pulse-socket
     volumes:
       - ${DATA_DIR}/wolf-config/cfg:/etc/wolf:rw
       - /tmp/sockets:/tmp/sockets:rw
