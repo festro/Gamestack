@@ -88,7 +88,7 @@ draw_header() {
     echo -e "  ${BOLD}[s]${RESET}  Start stack"
     echo -e "  ${BOLD}[d]${RESET}  Stop stack"
     echo -e "  ${BOLD}[r]${RESET}  Restart stack"
-    echo -e "  ${BOLD}[q]${RESET}  Quicksetup wizard"
+    echo -e "  ${BOLD}[q]${RESET}  Configure wizard"
     echo -e "  ${BOLD}[x]${RESET}  Exit"
     echo -e "  ${DIM}────────────────────────────────────────${RESET}"
     echo ""
@@ -112,7 +112,7 @@ log_cmd() {
     if [ -f .env ]; then
         docker compose --env-file .env --project-directory "$(dirname "$0")" "$@" 2>&1 | tee -a "$log_file"
     else
-        docker compose "$@" 2>        docker compose "$@" 2>        "$@" 2>&1 | tee -a "$log_file"1 | tee -a "$log_file"1 | tee -a "$log_file"
+        docker compose "$@" 2>&1 | tee -a "$log_file"
     fi
 }
 
@@ -127,7 +127,6 @@ while true; do
     case "$key" in
 
         o|O)
-            local HOST_IP
             HOST_IP=$(get_host_ip)
             PORTAL_URL="http://${HOST_IP}:8090/"
             echo ""
@@ -192,10 +191,10 @@ while true; do
 
         q|Q)
             echo ""
-            if [ -f quicksetup.sh ]; then
-                bash quicksetup.sh
+            if [ -f configure.sh ]; then
+                bash configure.sh
             else
-                echo -e "  ${R}quicksetup.sh not found in $(pwd)${RESET}"
+                echo -e "  ${R}configure.sh not found in $(pwd)${RESET}"
                 printf "  Press any key to continue..."
                 read -rsn1
             fi
