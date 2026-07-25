@@ -3,6 +3,18 @@
 Watch a running Wolf session in a browser — no Moonlight client needed.
 **View-only:** the stream is one-way. Input still goes through Moonlight.
 
+> **Status: not working against real Wolf yet — do not apply the tap on a box
+> you need for gaming.** The offline harness passes end to end, but on live
+> hardware (2026-07-25) a real Moonlight session produced **no tap sockets at
+> all**. The likely cause is the socket path: this tap writes
+> `tap_{session_id}_video`, but Wolf's own `default_source` uses `{}` for the
+> element name and `{session_id}` only for `listen-to`, so the sink pipeline
+> probably gets a different substitution set and the path never resolves. A
+> branch that fails on a shared `tee` can also take the Moonlight sink pipeline
+> with it. The tap was reverted on the nucbox; Wolf's stock config is unaffected.
+> Next step is to determine Wolf's real sink-side substitutions (from its source
+> or by testing a literal path) before re-applying.
+
 ## Why v2 exists
 
 v1 tried to read Wolf's video with `interpipesrc listen-to={session_id}_video`
