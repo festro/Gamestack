@@ -8,16 +8,24 @@ How it gets the media (and why not interpipe):
 gst-interpipe only connects pipelines *within one process*, so a separate
 container can never "listen-to" Wolf's internal buses. Instead, Wolf's
 per-session sink pipeline (user-configurable in config.toml) is patched with a
-tee that serializes the already-encoded stream through gdppay into an shmsink
-socket under /tmp/sockets (a bind mount shared with this container):
+tee that muxes the already-encoded stream into MPEG-TS and writes it to an
+shmsink socket under /tmp/sockets (a bind mount shared with this container):
 
-  tap_{session_id}_video   (H264/HEVC elementary stream, GDP-framed)
-  tap_{session_id}_audio   (Opus elementary stream, GDP-framed)
+  tap_{session_id}_video   (H264/HEVC in MPEG-TS)
+  tap_{session_id}_audio   (Opus in MPEG-TS)
+
+MPEG-TS rather than GDP because this sidecar always attaches mid-session: GDP
+sends caps once at stream start, so a late consumer only ever sees headerless
+buffers, while TS repeats its PAT/PMT tables forever.
+
+Both containers need a shared IPC namespace (`ipc: host` in compose) — the shm
+transport passes a /dev/shm segment name across the socket, which a private
+per-container /dev/shm cannot resolve.
 
 See apply-wolf-tap.sh for the config.toml patch.
 
 This sidecar watches TAP_DIR for tap_*_video sockets, builds one ingest
-pipeline per session (shmsrc ! gdpdepay ! parsebin ! rtp payloader ! tee),
+pipeline per session (shmsrc ! tsdemux ! parser ! rtp payloader ! tee),
 and attaches an independent webrtcbin per connected browser — so each peer
 gets its own SDP offer and multiple viewers can co-watch one session.
 
@@ -203,13 +211,15 @@ class TapSession:
     """
     Ingest pipeline for one Wolf session tap:
 
-      shmsrc(tap_<id>_video) ! gdpdepay ! parsebin ─(by caps)→ rtp payloader ! tee ┐
-      shmsrc(tap_<id>_audio) ! gdpdepay ! opusparse ! rtpopuspay ! tee ────────────┤
+      shmsrc(tap_<id>_video) ! tsdemux ─(pad by caps)→ h26xparse ! rtp payloader ! tee
+      shmsrc(tap_<id>_audio) ! tsdemux ─(pad by caps)→ opusparse ! rtpopuspay    ! tee
                                                         per-peer: tee ! queue ! webrtcbin
     """
 
     def __init__(self, session_id: str, video_sock: str, audio_sock: Optional[str], loop):
         self.session_id = session_id
+        # Element names must be parse-launch safe; session IDs are Wolf's to choose.
+        self.tag = re.sub(r'\W', '_', session_id)
         self.video_sock = video_sock
         self.audio_sock = audio_sock
         self.loop = loop
@@ -225,18 +235,18 @@ class TapSession:
 
     def start(self) -> bool:
         sid = self.session_id
+        tag = self.tag
         desc = (
-            f'shmsrc socket-path="{self.video_sock}" is-live=true '
-            f'! gdpdepay ! parsebin name=pb_{sid} '
-            # tee needs a permanent drain so it flows with zero peers
-            f'tee name=vtee_{sid} allow-not-linked=true '
+            f'shmsrc socket-path="{self.video_sock}" is-live=true do-timestamp=true '
+            f'! tsdemux name=vdemux_{tag} '
+            # allow-not-linked so the tee keeps flowing with zero peers attached
+            f'tee name=vtee_{tag} allow-not-linked=true '
         )
         if self.audio_sock:
             desc += (
-                f'shmsrc socket-path="{self.audio_sock}" is-live=true '
-                f'! gdpdepay ! opusparse ! rtpopuspay pt=96 '
-                f'! application/x-rtp,media=audio,encoding-name=OPUS,payload=96 '
-                f'! tee name=atee_{sid} allow-not-linked=true '
+                f'shmsrc socket-path="{self.audio_sock}" is-live=true do-timestamp=true '
+                f'! tsdemux name=ademux_{tag} '
+                f'tee name=atee_{tag} allow-not-linked=true '
             )
 
         try:
@@ -245,11 +255,13 @@ class TapSession:
             log.error(f'[{sid}] pipeline parse failed: {e}')
             return False
 
-        self.video_tee = self.pipeline.get_by_name(f'vtee_{sid}')
-        self.audio_tee = self.pipeline.get_by_name(f'atee_{sid}') if self.audio_sock else None
+        self.video_tee = self.pipeline.get_by_name(f'vtee_{tag}')
+        self.audio_tee = self.pipeline.get_by_name(f'atee_{tag}') if self.audio_sock else None
 
-        parsebin = self.pipeline.get_by_name(f'pb_{sid}')
-        parsebin.connect('pad-added', self._on_parse_pad)
+        # One handler for both demuxes — pads are routed by their caps.
+        self.pipeline.get_by_name(f'vdemux_{tag}').connect('pad-added', self._on_demux_pad)
+        if self.audio_sock:
+            self.pipeline.get_by_name(f'ademux_{tag}').connect('pad-added', self._on_demux_pad)
 
         bus = self.pipeline.get_bus()
         bus.add_signal_watch()
@@ -263,8 +275,8 @@ class TapSession:
                  f'{", audio" if self.audio_sock else ", no audio tap"})')
         return True
 
-    def _on_parse_pad(self, parsebin, pad):
-        """Link the right RTP payloader for whatever codec Wolf negotiated."""
+    def _on_demux_pad(self, demux, pad):
+        """Link the right parser + RTP payloader for whatever codec Wolf negotiated."""
         caps = pad.get_current_caps() or pad.query_caps(None)
         name = caps.get_structure(0).get_name() if caps.get_size() else '?'
         sid = self.session_id
@@ -273,28 +285,42 @@ class TapSession:
             chain = ('h264parse config-interval=-1 ! rtph264pay pt=97 '
                      'config-interval=-1 aggregate-mode=zero-latency '
                      '! application/x-rtp,media=video,encoding-name=H264,payload=97')
+            target, is_video = self.video_tee, True
             self.video_codec = 'H264'
         elif name == 'video/x-h265':
             chain = ('h265parse config-interval=-1 ! rtph265pay pt=98 config-interval=-1 '
                      '! application/x-rtp,media=video,encoding-name=H265,payload=98')
+            target, is_video = self.video_tee, True
             self.video_codec = 'H265'
             log.warning(f'[{sid}] HEVC session — most browsers cannot decode this; '
                         f'prefer H264 in the Moonlight client for co-viewing')
-        else:
+        elif name == 'audio/x-opus':
+            chain = ('opusparse ! rtpopuspay pt=96 '
+                     '! application/x-rtp,media=audio,encoding-name=OPUS,payload=96')
+            target, is_video = self.audio_tee, False
+        elif name.startswith('video/'):
             self.video_codec = f'unsupported:{name}'
             log.error(f'[{sid}] unsupported tapped codec {name} (AV1 co-view not implemented); '
                       f'set the Moonlight client to H264')
+            return
+        else:
+            log.info(f'[{sid}] ignoring demuxed stream {name}')
+            return
+
+        if target is None:
             return
 
         payl = Gst.parse_bin_from_description(chain, True)
         self.pipeline.add(payl)
         payl.sync_state_with_parent()
-        pad.link(payl.get_static_pad('sink'))
-        payl.link(self.video_tee)
+        if pad.link(payl.get_static_pad('sink')) != Gst.PadLinkReturn.OK:
+            log.error(f'[{sid}] failed to link {name} pad into payloader')
+            return
+        payl.link(target)
 
-        # count ingest bytes for /status
-        payl.get_static_pad('src').add_probe(Gst.PadProbeType.BUFFER, self._count_probe)
-        log.info(f'[{sid}] video codec {self.video_codec} → RTP ready')
+        if is_video:  # /status uses this to distinguish "no data" from "no viewers"
+            payl.get_static_pad('src').add_probe(Gst.PadProbeType.BUFFER, self._count_probe)
+        log.info(f'[{sid}] {name} → RTP ready')
 
     def _count_probe(self, pad, info):
         buf = info.get_buffer()

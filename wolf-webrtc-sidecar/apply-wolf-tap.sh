@@ -78,13 +78,16 @@ appsink sync=false name=wolf_udp_sink
 '''"""
 
 VIDEO_NEW = """# wolf_webrtc_tap: tee one branch to Moonlight (unchanged), one to the sidecar.
+# MPEG-TS (not GDP) because its PAT/PMT repeat, so a sidecar attaching
+# mid-session still learns the caps; GDP sends them once and never again.
 default_sink = '''tee name=wolf_webrtc_tap_v allow-not-linked=true !
 queue max-size-buffers=3 leaky=downstream !
 rtpmoonlightpay_video name=moonlight_pay payload_size={payload_size} fec_percentage={fec_percentage} min_required_fec_packets={min_required_fec_packets} !
 appsink sync=false name=wolf_udp_sink
 wolf_webrtc_tap_v. !
 queue max-size-buffers=3 leaky=downstream !
-gdppay !
+parsebin !
+mpegtsmux !
 shmsink socket-path=/tmp/sockets/tap_{session_id}_video shm-size=16777216 wait-for-connection=false sync=false async=false
 '''"""
 
@@ -98,7 +101,8 @@ rtpmoonlightpay_audio name=moonlight_pay packet_duration={packet_duration} encry
 appsink name=wolf_udp_sink
 wolf_webrtc_tap_a. !
 queue max-size-buffers=3 leaky=downstream !
-gdppay !
+parsebin !
+mpegtsmux !
 shmsink socket-path=/tmp/sockets/tap_{session_id}_audio shm-size=4194304 wait-for-connection=false sync=false async=false'''"""
 
 for old, new, label in ((VIDEO_OLD, VIDEO_NEW, 'video'), (AUDIO_OLD, AUDIO_NEW, 'audio')):

@@ -16,19 +16,32 @@ into an `shmsink` socket in `/tmp/sockets`, a directory both containers already
 bind-mount. The sidecar picks those up with `shmsrc`.
 
 ```
-Wolf (host net)                                    sidecar (host net)
+Wolf (host net, ipc host)                      sidecar (host net, ipc host)
   encoder ─ tee ─ rtpmoonlightpay ─ appsink → Moonlight client (unchanged)
-              └── queue(leaky) ─ gdppay ─ shmsink
+              └── queue(leaky) ─ parsebin ─ mpegtsmux ─ shmsink
                                     /tmp/sockets/tap_<session>_video
-                                                  └─ shmsrc ─ gdpdepay ─ parsebin
+                                                  └─ shmsrc ─ tsdemux ─ parser
                                                        ─ rtp payloader ─ tee
                                                             ├─ queue ─ webrtcbin → browser 1
                                                             └─ queue ─ webrtcbin → browser 2
 ```
 
 No re-encoding happens: frames are copied post-encoder, so the cost is a memcpy
-per frame. Both tap branches are `leaky=downstream` with `allow-not-linked`, so
-a stopped, slow, or crashed sidecar cannot stall Wolf's Moonlight path.
+plus TS packetisation. Both tap branches are `leaky=downstream` with
+`allow-not-linked`, so a stopped, slow, or crashed sidecar cannot stall Wolf's
+Moonlight path.
+
+Two non-obvious constraints, both learned the hard way and load-bearing:
+
+- **MPEG-TS, not GDP.** The sidecar always attaches *mid-session* — the tap
+  socket only exists once a session is running. GDP sends caps once at stream
+  start, so a late consumer gets `Received a buffer without first receiving
+  caps` forever. TS repeats PAT/PMT, so a late joiner self-describes.
+- **`ipc: host` on both containers.** GStreamer's shm transport passes a
+  `/dev/shm` segment *name* over the unix socket. Docker gives each container a
+  private `/dev/shm`, so the name doesn't resolve on the other side and
+  `shmsrc` dies instantly with EIO. Sharing the IPC namespace fixes it; without
+  it the tap looks connected and delivers nothing.
 
 ## Setup
 
