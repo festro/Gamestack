@@ -80,6 +80,38 @@ works and the problem is on the browser side.
 | F2 | Toggle stats HUD (fps, RTT, RX) |
 | Click video | Reminder that the stream is view-only |
 
+## Testing without Wolf
+
+```bash
+bash wolf-webrtc-sidecar/test/run-harness.sh
+```
+
+Stands up a producer container writing the exact tap a patched Wolf writes,
+then drives the sidecar with a real `webrtcbin` peer that completes
+offer/answer/ICE and counts delivered RTP. Needs only Docker — no GPU, no
+Moonlight, no pairing. Exits non-zero if media never reaches the peer, and
+`--keep` leaves the containers up for poking.
+
+It checks ingest, H264 + Opus payloading, a full WebRTC handshake, and two
+simultaneous viewers. Four separate bugs turned up here that all looked fine
+from "the container starts and the log says ready", so run it after touching
+the pipeline or bumping the base image.
+
+## Operational notes
+
+- **Stale sockets are normal.** A socket file outlives the session that made
+  it, and `shmsink` will not reuse a taken path — it creates
+  `tap_<id>_video.0` next to it. Discovery therefore takes the newest socket
+  per session and quarantines ones that refuse to connect (logged once, not
+  every scan). Nothing to clean up by hand.
+- **Audio can arrive late.** Wolf's audio and video sinks come up
+  independently, so a session may be video-only for a moment; the audio tap is
+  attached to the running session when it appears. Viewers already connected
+  keep the video-only stream they negotiated — reconnect to pick up audio.
+- **`/status` is the diagnosis endpoint.** `receiving: false` means Wolf isn't
+  writing (no session, or the config patch is missing); `receiving: true` with
+  `peers: 0` means ingest is fine and the problem is browser-side.
+
 ## Limits
 
 - **View-only.** Wolf takes input over Moonlight's encrypted control channel;
