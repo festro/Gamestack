@@ -63,7 +63,7 @@ draw_header() {
     clear
     local HOST_IP
     HOST_IP=$(get_host_ip)
-    local PORTAL_URL="http://${HOST_IP}/"
+    local PORTAL_URL="http://${HOST_IP}:8090/"
 
     echo -e "${BOLD}"
     echo "  ╔══════════════════════════════════════════╗"
@@ -129,7 +129,7 @@ while true; do
         o|O)
             local HOST_IP
             HOST_IP=$(get_host_ip)
-            PORTAL_URL="http://${HOST_IP}/"
+            PORTAL_URL="http://${HOST_IP}:8090/"
             echo ""
             if is_remote_session; then
                 echo ""

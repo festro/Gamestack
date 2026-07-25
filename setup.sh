@@ -133,7 +133,7 @@ HOST_IP=$(ip route get 1.1.1.1 2>/dev/null | awk '/src/{for(i=1;i<=NF;i++) if($i
 
 echo ""
 echo "=== Stack is up ==="
-echo "  Portal:       http://${HOST_IP}/"
+echo "  Portal:       http://${HOST_IP}:8090/"
 echo "  AMP:          http://${HOST_IP}:8080"
 echo "  Wolf pairing: http://${HOST_IP}:47989"
 echo "  WebRTC:       http://${HOST_IP}:8088/client"

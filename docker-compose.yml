@@ -80,14 +80,15 @@ services:
       - wolf
 
   # ── Portal ────────────────────────────────────────────────────────────────────
-  # nginx serving the GameStack portal UI on port 80.
-  # Dashboard, AMP iframe, Wolf stream launcher, network info, docs.
-  # Access: http://<host-ip>/
+  # nginx serving the GameStack portal UI.
+  # Moved to port 8090 — port 80 is owned by lancache-monolithic (required for
+  # Steam CDN HTTP interception). Update bookmarks accordingly.
+  # Access: http://<host-ip>:8090/
   portal:
     image: nginx:alpine
     container_name: portal
     ports:
-      - "80:80"
+      - "8090:80"
     volumes:
       - ${DATA_DIR}/portal/html:/usr/share/nginx/html:ro
       - ${DATA_DIR}/portal/docs:/usr/share/nginx/docs:ro
@@ -97,6 +98,51 @@ services:
       - amp
       - wolf
 
+
+  # ── LanCache Monolithic ───────────────────────────────────────────────────────
+  # Transparent caching proxy for Steam, Epic, GOG, Blizzard and other CDNs.
+  # Must own port 80 — Steam CDN traffic is HTTP on port 80 and cannot be
+  # redirected to a non-standard port.
+  # Cache lives at ${CACHE_DIR} — allocate generously (500GB+ recommended).
+  # USE_GENERIC_CACHE=true enables Workshop/mod caching via the generic cache.
+  # Logs: docker logs lancache-monolithic
+  lancache-monolithic:
+    image: lancachenet/monolithic:latest
+    container_name: lancache-monolithic
+    environment:
+      - TZ=${TZ}
+      - CACHE_MEM_SIZE=${CACHE_MEM_SIZE:-500m}
+      - CACHE_DISK_SIZE=${CACHE_DISK_SIZE:-500000m}
+      - CACHE_MAX_AGE=${CACHE_MAX_AGE:-3650d}
+      - USE_GENERIC_CACHE=true
+      - UPSTREAM_DNS=${UPSTREAM_DNS:-1.1.1.1}
+    volumes:
+      - ${CACHE_DIR}/data:/data/cache
+      - ${CACHE_DIR}/logs:/data/logs
+    ports:
+      - "80:80"
+    restart: unless-stopped
+
+  # ── LanCache DNS ─────────────────────────────────────────────────────────────
+  # DNS server that resolves Steam/Epic/GOG CDN hostnames to the host IP so
+  # traffic is intercepted by lancache-monolithic.
+  # Point client DNS to HOST_IP (YOUR_HOST_IP) to use the cache.
+  # LANCACHE_IP must match your host LAN IP.
+  # Logs: docker logs lancache-dns
+  lancache-dns:
+    image: lancachenet/lancache-dns:latest
+    container_name: lancache-dns
+    environment:
+      - TZ=${TZ}
+      - LANCACHE_IP=${HOST_IP}
+      - USE_GENERIC_CACHE=true
+      - UPSTREAM_DNS=${UPSTREAM_DNS:-1.1.1.1}
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+    restart: unless-stopped
+    depends_on:
+      - lancache-monolithic
 networks:
   default:
     driver: bridge
